@@ -22,9 +22,11 @@ import { Route as DocsSplatRouteImport } from './routes/docs/$'
 import { Route as BlogsSplatRouteImport } from './routes/blogs/$'
 import { Route as ApiSubscribeRouteImport } from './routes/api/subscribe'
 import { Route as ApiEventRouteImport } from './routes/api/event'
+import { Route as ApiBacklinkCheckRouteImport } from './routes/api/backlink-check'
 import { Route as MarketingPricingRouteImport } from './routes/_marketing/pricing'
 import { Route as MarketingOpenSourceSeoRouteImport } from './routes/_marketing/open-source-seo'
 import { Route as MarketingGoogleSearchConsoleMcpRouteImport } from './routes/_marketing/google-search-console-mcp'
+import { Route as MarketingBacklinkCheckerRouteImport } from './routes/_marketing/backlink-checker'
 import { Route as MarketingFeaturesIndexRouteImport } from './routes/_marketing/features/index'
 import { Route as MarketingFeaturesSiteAuditRouteImport } from './routes/_marketing/features/site-audit'
 import { Route as MarketingFeaturesSavedKeywordsRouteImport } from './routes/_marketing/features/saved-keywords'
@@ -32,6 +34,7 @@ import { Route as MarketingFeaturesRankTrackingRouteImport } from './routes/_mar
 import { Route as MarketingFeaturesMcpRouteImport } from './routes/_marketing/features/mcp'
 import { Route as MarketingFeaturesKeywordResearchRouteImport } from './routes/_marketing/features/keyword-research'
 import { Route as MarketingFeaturesDomainOverviewRouteImport } from './routes/_marketing/features/domain-overview'
+import { Route as MarketingFeaturesBacklinksRouteImport } from './routes/_marketing/features/backlinks'
 import { Route as MarketingFeaturesBacklinkCheckerRouteImport } from './routes/_marketing/features/backlink-checker'
 import { Route as MarketingFeaturesAiSearchPromptsRouteImport } from './routes/_marketing/features/ai-search-prompts'
 import { Route as MarketingFeaturesAiBrandVisibilityRouteImport } from './routes/_marketing/features/ai-brand-visibility'
@@ -105,6 +108,11 @@ const ApiEventRoute = ApiEventRouteImport.update({
   path: '/api/event',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiBacklinkCheckRoute = ApiBacklinkCheckRouteImport.update({
+  id: '/api/backlink-check',
+  path: '/api/backlink-check',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MarketingPricingRoute = MarketingPricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
@@ -119,6 +127,12 @@ const MarketingGoogleSearchConsoleMcpRoute =
   MarketingGoogleSearchConsoleMcpRouteImport.update({
     id: '/google-search-console-mcp',
     path: '/google-search-console-mcp',
+    getParentRoute: () => MarketingRoute,
+  } as any)
+const MarketingBacklinkCheckerRoute =
+  MarketingBacklinkCheckerRouteImport.update({
+    id: '/backlink-checker',
+    path: '/backlink-checker',
     getParentRoute: () => MarketingRoute,
   } as any)
 const MarketingFeaturesIndexRoute = MarketingFeaturesIndexRouteImport.update({
@@ -159,6 +173,12 @@ const MarketingFeaturesDomainOverviewRoute =
   MarketingFeaturesDomainOverviewRouteImport.update({
     id: '/features/domain-overview',
     path: '/features/domain-overview',
+    getParentRoute: () => MarketingRoute,
+  } as any)
+const MarketingFeaturesBacklinksRoute =
+  MarketingFeaturesBacklinksRouteImport.update({
+    id: '/features/backlinks',
+    path: '/features/backlinks',
     getParentRoute: () => MarketingRoute,
   } as any)
 const MarketingFeaturesBacklinkCheckerRoute =
@@ -214,9 +234,11 @@ export interface FileRoutesByFullPath {
   '/': typeof MarketingIndexRoute
   '/privacy': typeof PrivacyRoute
   '/terms-and-conditions': typeof TermsAndConditionsRoute
+  '/backlink-checker': typeof MarketingBacklinkCheckerRoute
   '/google-search-console-mcp': typeof MarketingGoogleSearchConsoleMcpRoute
   '/open-source-seo': typeof MarketingOpenSourceSeoRoute
   '/pricing': typeof MarketingPricingRoute
+  '/api/backlink-check': typeof ApiBacklinkCheckRoute
   '/api/event': typeof ApiEventRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/blogs/$': typeof BlogsSplatRoute
@@ -229,6 +251,7 @@ export interface FileRoutesByFullPath {
   '/features/ai-brand-visibility': typeof MarketingFeaturesAiBrandVisibilityRoute
   '/features/ai-search-prompts': typeof MarketingFeaturesAiSearchPromptsRoute
   '/features/backlink-checker': typeof MarketingFeaturesBacklinkCheckerRoute
+  '/features/backlinks': typeof MarketingFeaturesBacklinksRoute
   '/features/domain-overview': typeof MarketingFeaturesDomainOverviewRoute
   '/features/keyword-research': typeof MarketingFeaturesKeywordResearchRoute
   '/features/mcp': typeof MarketingFeaturesMcpRoute
@@ -245,9 +268,11 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/terms-and-conditions': typeof TermsAndConditionsRoute
+  '/backlink-checker': typeof MarketingBacklinkCheckerRoute
   '/google-search-console-mcp': typeof MarketingGoogleSearchConsoleMcpRoute
   '/open-source-seo': typeof MarketingOpenSourceSeoRoute
   '/pricing': typeof MarketingPricingRoute
+  '/api/backlink-check': typeof ApiBacklinkCheckRoute
   '/api/event': typeof ApiEventRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/blogs/$': typeof BlogsSplatRoute
@@ -261,6 +286,7 @@ export interface FileRoutesByTo {
   '/features/ai-brand-visibility': typeof MarketingFeaturesAiBrandVisibilityRoute
   '/features/ai-search-prompts': typeof MarketingFeaturesAiSearchPromptsRoute
   '/features/backlink-checker': typeof MarketingFeaturesBacklinkCheckerRoute
+  '/features/backlinks': typeof MarketingFeaturesBacklinksRoute
   '/features/domain-overview': typeof MarketingFeaturesDomainOverviewRoute
   '/features/keyword-research': typeof MarketingFeaturesKeywordResearchRoute
   '/features/mcp': typeof MarketingFeaturesMcpRoute
@@ -279,9 +305,11 @@ export interface FileRoutesById {
   '/_marketing': typeof MarketingRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/terms-and-conditions': typeof TermsAndConditionsRoute
+  '/_marketing/backlink-checker': typeof MarketingBacklinkCheckerRoute
   '/_marketing/google-search-console-mcp': typeof MarketingGoogleSearchConsoleMcpRoute
   '/_marketing/open-source-seo': typeof MarketingOpenSourceSeoRoute
   '/_marketing/pricing': typeof MarketingPricingRoute
+  '/api/backlink-check': typeof ApiBacklinkCheckRoute
   '/api/event': typeof ApiEventRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/blogs/$': typeof BlogsSplatRoute
@@ -295,6 +323,7 @@ export interface FileRoutesById {
   '/_marketing/features/ai-brand-visibility': typeof MarketingFeaturesAiBrandVisibilityRoute
   '/_marketing/features/ai-search-prompts': typeof MarketingFeaturesAiSearchPromptsRoute
   '/_marketing/features/backlink-checker': typeof MarketingFeaturesBacklinkCheckerRoute
+  '/_marketing/features/backlinks': typeof MarketingFeaturesBacklinksRoute
   '/_marketing/features/domain-overview': typeof MarketingFeaturesDomainOverviewRoute
   '/_marketing/features/keyword-research': typeof MarketingFeaturesKeywordResearchRoute
   '/_marketing/features/mcp': typeof MarketingFeaturesMcpRoute
@@ -314,9 +343,11 @@ export interface FileRouteTypes {
     | '/'
     | '/privacy'
     | '/terms-and-conditions'
+    | '/backlink-checker'
     | '/google-search-console-mcp'
     | '/open-source-seo'
     | '/pricing'
+    | '/api/backlink-check'
     | '/api/event'
     | '/api/subscribe'
     | '/blogs/$'
@@ -329,6 +360,7 @@ export interface FileRouteTypes {
     | '/features/ai-brand-visibility'
     | '/features/ai-search-prompts'
     | '/features/backlink-checker'
+    | '/features/backlinks'
     | '/features/domain-overview'
     | '/features/keyword-research'
     | '/features/mcp'
@@ -345,9 +377,11 @@ export interface FileRouteTypes {
   to:
     | '/privacy'
     | '/terms-and-conditions'
+    | '/backlink-checker'
     | '/google-search-console-mcp'
     | '/open-source-seo'
     | '/pricing'
+    | '/api/backlink-check'
     | '/api/event'
     | '/api/subscribe'
     | '/blogs/$'
@@ -361,6 +395,7 @@ export interface FileRouteTypes {
     | '/features/ai-brand-visibility'
     | '/features/ai-search-prompts'
     | '/features/backlink-checker'
+    | '/features/backlinks'
     | '/features/domain-overview'
     | '/features/keyword-research'
     | '/features/mcp'
@@ -378,9 +413,11 @@ export interface FileRouteTypes {
     | '/_marketing'
     | '/privacy'
     | '/terms-and-conditions'
+    | '/_marketing/backlink-checker'
     | '/_marketing/google-search-console-mcp'
     | '/_marketing/open-source-seo'
     | '/_marketing/pricing'
+    | '/api/backlink-check'
     | '/api/event'
     | '/api/subscribe'
     | '/blogs/$'
@@ -394,6 +431,7 @@ export interface FileRouteTypes {
     | '/_marketing/features/ai-brand-visibility'
     | '/_marketing/features/ai-search-prompts'
     | '/_marketing/features/backlink-checker'
+    | '/_marketing/features/backlinks'
     | '/_marketing/features/domain-overview'
     | '/_marketing/features/keyword-research'
     | '/_marketing/features/mcp'
@@ -412,6 +450,7 @@ export interface RootRouteChildren {
   MarketingRoute: typeof MarketingRouteWithChildren
   PrivacyRoute: typeof PrivacyRoute
   TermsAndConditionsRoute: typeof TermsAndConditionsRoute
+  ApiBacklinkCheckRoute: typeof ApiBacklinkCheckRoute
   ApiEventRoute: typeof ApiEventRoute
   ApiSubscribeRoute: typeof ApiSubscribeRoute
   BlogsSplatRoute: typeof BlogsSplatRoute
@@ -516,6 +555,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiEventRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/backlink-check': {
+      id: '/api/backlink-check'
+      path: '/api/backlink-check'
+      fullPath: '/api/backlink-check'
+      preLoaderRoute: typeof ApiBacklinkCheckRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_marketing/pricing': {
       id: '/_marketing/pricing'
       path: '/pricing'
@@ -535,6 +581,13 @@ declare module '@tanstack/react-router' {
       path: '/google-search-console-mcp'
       fullPath: '/google-search-console-mcp'
       preLoaderRoute: typeof MarketingGoogleSearchConsoleMcpRouteImport
+      parentRoute: typeof MarketingRoute
+    }
+    '/_marketing/backlink-checker': {
+      id: '/_marketing/backlink-checker'
+      path: '/backlink-checker'
+      fullPath: '/backlink-checker'
+      preLoaderRoute: typeof MarketingBacklinkCheckerRouteImport
       parentRoute: typeof MarketingRoute
     }
     '/_marketing/features/': {
@@ -584,6 +637,13 @@ declare module '@tanstack/react-router' {
       path: '/features/domain-overview'
       fullPath: '/features/domain-overview'
       preLoaderRoute: typeof MarketingFeaturesDomainOverviewRouteImport
+      parentRoute: typeof MarketingRoute
+    }
+    '/_marketing/features/backlinks': {
+      id: '/_marketing/features/backlinks'
+      path: '/features/backlinks'
+      fullPath: '/features/backlinks'
+      preLoaderRoute: typeof MarketingFeaturesBacklinksRouteImport
       parentRoute: typeof MarketingRoute
     }
     '/_marketing/features/backlink-checker': {
@@ -646,6 +706,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface MarketingRouteChildren {
+  MarketingBacklinkCheckerRoute: typeof MarketingBacklinkCheckerRoute
   MarketingGoogleSearchConsoleMcpRoute: typeof MarketingGoogleSearchConsoleMcpRoute
   MarketingOpenSourceSeoRoute: typeof MarketingOpenSourceSeoRoute
   MarketingPricingRoute: typeof MarketingPricingRoute
@@ -653,6 +714,7 @@ interface MarketingRouteChildren {
   MarketingFeaturesAiBrandVisibilityRoute: typeof MarketingFeaturesAiBrandVisibilityRoute
   MarketingFeaturesAiSearchPromptsRoute: typeof MarketingFeaturesAiSearchPromptsRoute
   MarketingFeaturesBacklinkCheckerRoute: typeof MarketingFeaturesBacklinkCheckerRoute
+  MarketingFeaturesBacklinksRoute: typeof MarketingFeaturesBacklinksRoute
   MarketingFeaturesDomainOverviewRoute: typeof MarketingFeaturesDomainOverviewRoute
   MarketingFeaturesKeywordResearchRoute: typeof MarketingFeaturesKeywordResearchRoute
   MarketingFeaturesMcpRoute: typeof MarketingFeaturesMcpRoute
@@ -668,6 +730,7 @@ interface MarketingRouteChildren {
 }
 
 const MarketingRouteChildren: MarketingRouteChildren = {
+  MarketingBacklinkCheckerRoute: MarketingBacklinkCheckerRoute,
   MarketingGoogleSearchConsoleMcpRoute: MarketingGoogleSearchConsoleMcpRoute,
   MarketingOpenSourceSeoRoute: MarketingOpenSourceSeoRoute,
   MarketingPricingRoute: MarketingPricingRoute,
@@ -676,6 +739,7 @@ const MarketingRouteChildren: MarketingRouteChildren = {
     MarketingFeaturesAiBrandVisibilityRoute,
   MarketingFeaturesAiSearchPromptsRoute: MarketingFeaturesAiSearchPromptsRoute,
   MarketingFeaturesBacklinkCheckerRoute: MarketingFeaturesBacklinkCheckerRoute,
+  MarketingFeaturesBacklinksRoute: MarketingFeaturesBacklinksRoute,
   MarketingFeaturesDomainOverviewRoute: MarketingFeaturesDomainOverviewRoute,
   MarketingFeaturesKeywordResearchRoute: MarketingFeaturesKeywordResearchRoute,
   MarketingFeaturesMcpRoute: MarketingFeaturesMcpRoute,
@@ -703,6 +767,7 @@ const rootRouteChildren: RootRouteChildren = {
   MarketingRoute: MarketingRouteWithChildren,
   PrivacyRoute: PrivacyRoute,
   TermsAndConditionsRoute: TermsAndConditionsRoute,
+  ApiBacklinkCheckRoute: ApiBacklinkCheckRoute,
   ApiEventRoute: ApiEventRoute,
   ApiSubscribeRoute: ApiSubscribeRoute,
   BlogsSplatRoute: BlogsSplatRoute,
