@@ -1,8 +1,9 @@
 # .reflect
 
-Reflect Media's deployment layer for this fork. **Everything Reflect owns lives
-here or in `.github/workflows/reflect-*.yml`** — new paths only, so an upstream
-merge can never conflict with it.
+Reflect Media's deployment layer for this fork. Everything Reflect owns lives in
+**new paths only** — this directory, `.github/workflows/reflect-*.yml`, and
+`scripts/reflect-apply-resources.mjs` — so an upstream merge can never conflict
+with it. No tracked upstream file is modified.
 
 Upstream is [`every-app/open-seo`](https://github.com/every-app/open-seo) (MIT).
 The private companion repo is `sebastian-reflectmedia/reflect-openseo`, which holds
@@ -20,10 +21,28 @@ that edits it, something has gone wrong.
 
 ## Files
 
-| Path                  | What                                                                                                    |
-| --------------------- | ------------------------------------------------------------------------------------------------------- |
-| `apply-resources.mjs` | Writes the six Reflect values into `wrangler.jsonc`. Hard-fails rather than deploy an unverified config |
-| `upstream.lock`       | The upstream release this fork is synced to. Bumped only by `reflect-upstream-watch`, never by hand     |
+| Path                                  | What                                                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `scripts/reflect-apply-resources.mjs` | Writes the six Reflect values into `wrangler.jsonc`. Hard-fails rather than deploy an unverified config |
+| `.reflect/upstream.lock`              | The upstream release this fork is synced to. Bumped only by `reflect-upstream-watch`, never by hand     |
+
+### Why the script is in `scripts/` and not here
+
+Upstream's `ci:check` runs `oxlint . --type-aware` over the whole tree. A plain
+`.mjs` file outside `tsconfig` resolves to `any`, so the `typescript/no-unsafe-*`
+rules fire on every line — **81 errors** for this one file. Type-aware rules run in
+a separate engine (`tsgolint`) that **ignores `// oxlint-disable` comments**, so
+suppressing them in-file is not possible.
+
+`scripts/` is already in `ignorePatterns` in `.oxlintrc.json`, which is how upstream
+solved the identical problem for its own `.mjs` scripts. Putting our script there
+costs nothing and avoids editing a tracked upstream file — adding `.reflect` to
+`ignorePatterns` would have put a permanent conflict in `.oxlintrc.json` on every
+future merge.
+
+The `reflect-` filename prefix keeps ownership obvious and makes a collision with an
+upstream file effectively impossible. Adding a _new_ file to an existing directory
+cannot conflict on merge; only two edits to the same path can.
 
 ## Workflows
 
@@ -47,10 +66,10 @@ migrates upstream's D1, not ours.
 ```bash
 export REFLECT_KV_ID=... REFLECT_OAUTH_KV_ID=... \
        REFLECT_D1_NAME=... REFLECT_D1_ID=... REFLECT_R2_BUCKET=...
-node .reflect/apply-resources.mjs && pnpm run deploy
+node scripts/reflect-apply-resources.mjs && pnpm run deploy
 ```
 
-`node .reflect/apply-resources.mjs --check` verifies the file as it stands and
+`node scripts/reflect-apply-resources.mjs --check` verifies the file as it stands and
 writes nothing. It reports failure on an untouched upstream config, which is the
 whole point — use it to confirm what you are about to deploy.
 

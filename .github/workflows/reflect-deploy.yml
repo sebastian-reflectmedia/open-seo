@@ -6,7 +6,7 @@ name: Reflect — deploy
 # environment's required reviewer is the last look before production D1 is
 # migrated. Nothing here runs without that approval.
 #
-# Order matters: .reflect/apply-resources.mjs MUST run before `pnpm run deploy`,
+# Order matters: scripts/reflect-apply-resources.mjs MUST run before `pnpm run deploy`,
 # because that script is `db:migrate:prod && build && wrangler deploy` and the
 # migrate step reads database_id and migrations_dir out of wrangler.jsonc. A
 # deploy that skips it migrates upstream's D1, not ours.
@@ -61,7 +61,7 @@ jobs:
       # Hard-fails if any of the six values did not land exactly once, or if
       # upstream renamed a binding. Failing here is the point.
       - name: Point config at Reflect resources
-        run: node .reflect/apply-resources.mjs
+        run: node scripts/reflect-apply-resources.mjs
 
       - name: Capture a D1 restore point
         id: restore

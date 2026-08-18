@@ -13,7 +13,7 @@
 // The design rationale — including every rejected alternative for keeping ids
 // out of the file — is in the private reflect-openseo repo, docs/upstream-sync.md.
 //
-// Usage:  node .reflect/apply-resources.mjs [--check]
+// Usage:  node scripts/reflect-apply-resources.mjs [--check]
 //   --check  verify only; exit non-zero if the file is not already correct.
 //            Does not write. Used by the deploy workflow's post-check.
 
@@ -328,7 +328,7 @@ function report() {
   console.error(
     "\nThis is a hard failure by design. Deploying with an unverified config would " +
       "target upstream's D1/KV/R2 instead of Reflect's.\n" +
-      "If upstream renamed a binding, update .reflect/apply-resources.mjs and " +
+      "If upstream renamed a binding, update scripts/reflect-apply-resources.mjs and " +
       "config/wrangler.reflect.jsonc in reflect-openseo together.",
   );
   process.exit(1);
