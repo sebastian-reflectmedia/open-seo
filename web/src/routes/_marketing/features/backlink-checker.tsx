@@ -1,10 +1,18 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
+import { FeaturePageTemplate } from "@/components/feature-page";
+import { featurePages } from "@/lib/feature-pages";
+import { buildPageSeo } from "@/lib/seo";
 
-// The old feature page ranks for "backlink checker"; that intent is now served
-// by the free tool at /backlink-checker. The feature content moved to
-// /features/backlinks.
+const page = featurePages.backlinks;
+
 export const Route = createFileRoute("/_marketing/features/backlink-checker")({
-  beforeLoad: () => {
-    throw redirect({ to: "/backlink-checker", statusCode: 301 });
-  },
+  head: () =>
+    buildPageSeo({
+      title: "Backlink Checker",
+      description: page.description,
+      path: "/features/backlink-checker",
+      titleSuffix: "OpenSEO",
+      imageAlt: page.imageAlt,
+    }),
+  component: () => <FeaturePageTemplate page={page} />,
 });

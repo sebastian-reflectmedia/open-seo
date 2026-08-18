@@ -243,12 +243,14 @@ async function ensureBacklinkSnapshot(input: {
     return getBacklinkSummary(projectId, domain);
   }
 
-  const normalized = normalizeBacklinksTarget(domain, { scope: "domain" });
+  // Dashboard totals cover the whole site, subdomains included.
+  const normalized = normalizeBacklinksTarget(domain, { scope: "subdomains" });
   const dataforseo = createDataforseoClient(input.billingCustomer);
 
   try {
     const summary = await dataforseo.backlinks.summary({
       target: normalized.apiTarget,
+      includeSubdomains: normalized.includeSubdomains,
     });
     await BacklinkSnapshotRepository.insert({
       projectId,

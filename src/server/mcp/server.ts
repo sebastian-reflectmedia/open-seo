@@ -4,7 +4,11 @@ import {
   type ToolAnnotations,
 } from "@modelcontextprotocol/server";
 import type { z } from "zod";
-import { createMcpToolContext, type ToolContext } from "@/server/mcp/context";
+import {
+  createMcpToolContext,
+  type McpProps,
+  type ToolContext,
+} from "@/server/mcp/context";
 import { objectSchema } from "@/server/mcp/output-schemas";
 import { instrumentMcpToolHandler } from "@/server/mcp/instrumentation";
 import { getBacklinksOverviewTool } from "@/server/mcp/tools/get-backlinks-overview";
@@ -41,12 +45,20 @@ import {
   getRankedKeywordsTool,
   searchLocalBusinessesTool,
 } from "@/server/mcp/tools/dataforseo-research-tools";
+import {
+  getBusinessProfileTool,
+  getBusinessReviewsTool,
+  getBusinessUpdatesTool,
+  getLocalRankGridTool,
+  listBusinessCategoriesTool,
+} from "@/server/mcp/tools/local-seo-tools";
 import { researchKeywordsTool } from "@/server/mcp/tools/research-keywords";
 import { saveKeywordsTool } from "@/server/mcp/tools/save-keywords";
 import {
   getSearchConsolePerformanceTool,
   inspectUrlsTool,
 } from "@/server/mcp/tools/search-console-tools";
+import { GA4_OAUTH_APP_PENDING } from "@/shared/ga4";
 import {
   getAuditIssuesTool,
   getAuditPagesTool,
@@ -84,6 +96,7 @@ type OpenSeoToolDefinition<Input extends ToolSchema> = {
 function registerOpenSeoTool<Input extends ToolSchema>(
   server: McpServer,
   tool: OpenSeoToolDefinition<Input>,
+  authProps: McpProps,
 ) {
   const outputSchema = objectSchema(tool.config.outputSchema);
   const handler = instrumentMcpToolHandler(
@@ -99,18 +112,22 @@ function registerOpenSeoTool<Input extends ToolSchema>(
       inputSchema: objectSchema(tool.config.inputSchema),
       outputSchema,
     },
-    (args, context) =>
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- args were validated against the tool's own inputSchema just above
-      handler(args as ToolArgs<Input>, createMcpToolContext(context)),
+    (args, context) => {
+      return handler(
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- args were validated against the tool's own inputSchema just above
+        args as ToolArgs<Input>,
+        createMcpToolContext(context, authProps),
+      );
+    },
   );
 }
 
-export function createOpenSeoMcpServer() {
+export function createOpenSeoMcpServer(authProps: McpProps) {
   const server = new McpServer(
     {
       name: "OpenSEO MCP",
       title: "OpenSEO",
-      version: "0.0.11",
+      version: "0.0.12",
       description:
         "SEO research tools for AI agents: keyword research and metrics, SERP and local SERP results, domain and backlink analysis, rank tracking, and Google Search Console performance.",
       websiteUrl: "https://openseo.so",
@@ -128,45 +145,56 @@ export function createOpenSeoMcpServer() {
     },
   );
 
-  registerOpenSeoTool(server, whoamiTool);
-  registerOpenSeoTool(server, listProjectsTool);
-  registerOpenSeoTool(server, createProjectTool);
-  registerOpenSeoTool(server, listSavedKeywordsTool);
-  registerOpenSeoTool(server, researchKeywordsTool);
-  registerOpenSeoTool(server, saveKeywordsTool);
-  registerOpenSeoTool(server, getDomainOverviewTool);
-  registerOpenSeoTool(server, getDomainKeywordSuggestionsTool);
-  registerOpenSeoTool(server, getBacklinksOverviewTool);
-  registerOpenSeoTool(server, getBacklinksProfileTool);
-  registerOpenSeoTool(server, getSerpResultsTool);
-  registerOpenSeoTool(server, createRankTrackerTool);
-  registerOpenSeoTool(server, getRankTrackerTool);
-  registerOpenSeoTool(server, addRankTrackingKeywordsTool);
-  registerOpenSeoTool(server, removeRankTrackingKeywordsTool);
-  registerOpenSeoTool(server, estimateRankTrackerCostTool);
-  registerOpenSeoTool(server, runRankTrackerTool);
-  registerOpenSeoTool(server, getRankedKeywordsTool);
-  registerOpenSeoTool(server, findSerpCompetitorsTool);
-  registerOpenSeoTool(server, searchLocalBusinessesTool);
-  registerOpenSeoTool(server, getLocalSerpResultsTool);
-  registerOpenSeoTool(server, getGoogleBusinessQuestionsTool);
-  registerOpenSeoTool(server, getKeywordMetricsTool);
-  registerOpenSeoTool(server, getSearchConsolePerformanceTool);
-  registerOpenSeoTool(server, inspectUrlsTool);
-  registerOpenSeoTool(server, getGoogleAnalyticsOrganicLandingPagesTool);
-  registerOpenSeoTool(server, getGoogleAnalyticsPagePerformanceTool);
-  registerOpenSeoTool(server, getGoogleAnalyticsKeyEventsTool);
-  registerOpenSeoTool(server, getSearchOpportunitiesTool);
-  registerOpenSeoTool(server, getGoogleAnalyticsOrganicOverviewTool);
-  registerOpenSeoTool(server, getGoogleAnalyticsTrafficAcquisitionTool);
-  registerOpenSeoTool(server, getGoogleAnalyticsMeasurementHealthTool);
-  registerOpenSeoTool(server, getGoogleAnalyticsEcommercePerformanceTool);
-  registerOpenSeoTool(server, getGoogleAnalyticsSiteSearchTool);
-  registerOpenSeoTool(server, getGoogleAnalyticsAudienceBreakdownTool);
-  registerOpenSeoTool(server, runSiteAuditTool);
-  registerOpenSeoTool(server, getAuditStatusTool);
-  registerOpenSeoTool(server, getAuditIssuesTool);
-  registerOpenSeoTool(server, getAuditPagesTool);
+  const register = <Input extends ToolSchema>(
+    tool: OpenSeoToolDefinition<Input>,
+  ) => registerOpenSeoTool(server, tool, authProps);
+
+  register(whoamiTool);
+  register(listProjectsTool);
+  register(createProjectTool);
+  register(listSavedKeywordsTool);
+  register(researchKeywordsTool);
+  register(saveKeywordsTool);
+  register(getDomainOverviewTool);
+  register(getDomainKeywordSuggestionsTool);
+  register(getBacklinksOverviewTool);
+  register(getBacklinksProfileTool);
+  register(getSerpResultsTool);
+  register(createRankTrackerTool);
+  register(getRankTrackerTool);
+  register(addRankTrackingKeywordsTool);
+  register(removeRankTrackingKeywordsTool);
+  register(estimateRankTrackerCostTool);
+  register(runRankTrackerTool);
+  register(getRankedKeywordsTool);
+  register(findSerpCompetitorsTool);
+  register(searchLocalBusinessesTool);
+  register(getLocalSerpResultsTool);
+  register(getGoogleBusinessQuestionsTool);
+  register(getBusinessProfileTool);
+  register(getBusinessReviewsTool);
+  register(getBusinessUpdatesTool);
+  register(listBusinessCategoriesTool);
+  register(getLocalRankGridTool);
+  register(getKeywordMetricsTool);
+  register(getSearchConsolePerformanceTool);
+  register(inspectUrlsTool);
+  if (!GA4_OAUTH_APP_PENDING) {
+    register(getGoogleAnalyticsOrganicLandingPagesTool);
+    register(getGoogleAnalyticsPagePerformanceTool);
+    register(getGoogleAnalyticsKeyEventsTool);
+    register(getSearchOpportunitiesTool);
+    register(getGoogleAnalyticsOrganicOverviewTool);
+    register(getGoogleAnalyticsTrafficAcquisitionTool);
+    register(getGoogleAnalyticsMeasurementHealthTool);
+    register(getGoogleAnalyticsEcommercePerformanceTool);
+    register(getGoogleAnalyticsSiteSearchTool);
+    register(getGoogleAnalyticsAudienceBreakdownTool);
+  }
+  register(runSiteAuditTool);
+  register(getAuditStatusTool);
+  register(getAuditIssuesTool);
+  register(getAuditPagesTool);
 
   return server;
 }

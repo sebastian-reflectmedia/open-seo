@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("cloudflare:workers", () => ({
   waitUntil: (promise: Promise<unknown>) => void promise,
+  // api-key-auth pulls the db client into this module graph; it reads env at
+  // module load.
+  env: {},
 }));
 
 // The whole module is doubled because the real one imports "cloudflare:workers"

@@ -63,8 +63,14 @@ export function ProjectSettings({ projectId }: { projectId: string }) {
       </section>
 
       <section id="google-analytics" className="space-y-3 scroll-mt-6">
-        <h2 className="text-sm font-medium text-base-content/50">Analytics</h2>
-        <GoogleAnalyticsConnectionCard projectId={projectId} />
+        <GoogleAnalyticsConnectionCard
+          projectId={projectId}
+          heading={
+            <h2 className="text-sm font-medium text-base-content/50">
+              Analytics
+            </h2>
+          }
+        />
       </section>
 
       <DangerSection project={project} canArchive={projects.length > 1} />

@@ -1,5 +1,4 @@
 import type { ServerContext } from "@modelcontextprotocol/server";
-import { getMcpAuthContext } from "agents/mcp/server";
 import { z } from "zod";
 import type { BillingCustomerContext } from "@/server/billing/subscription";
 import { buildDashboardUrl } from "@/server/mcp/urls";
@@ -51,9 +50,11 @@ export const hostedWorkersOAuthMcpPropsSchema = z.object({
   }),
 });
 
+export type McpProps = z.infer<typeof workersOAuthMcpPropsSchema>;
+
 export function createWorkersOAuthMcpProps(
   context: ApplicationAuthContext,
-): Record<string, ApplicationAuthContext> {
+): McpProps {
   return {
     [MCP_AUTH_CONTEXT_PROP]: context,
   };
@@ -61,10 +62,9 @@ export function createWorkersOAuthMcpProps(
 
 export function createMcpToolContext(
   context: Pick<ServerContext, "http">,
+  props: McpProps,
 ): ToolContext {
-  const result = workersOAuthMcpPropsSchema.safeParse(
-    getMcpAuthContext()?.props,
-  );
+  const result = workersOAuthMcpPropsSchema.safeParse(props);
   if (!result.success) {
     throw new Error(`MCP auth context missing: ${result.error.message}`);
   }

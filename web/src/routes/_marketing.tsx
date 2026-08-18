@@ -52,16 +52,18 @@ function getMobileNavItems(githubStarCount: string) {
       label: "Product",
       links: [
         { label: "Features", href: "/features" },
+        { label: "Roadmap", href: "/roadmap" },
         { label: "Pricing", href: "/pricing" },
       ],
     },
     {
       label: "Resources",
       links: [
-        { label: "Blog", href: "/blogs" },
-        { label: "Docs", href: "/docs" },
         { label: "MCP Setup", href: "/docs/mcp" },
         { label: "Skills", href: "/docs/skills" },
+        { label: "Strategy Library", href: "/library" },
+        { label: "Blog", href: "/blogs" },
+        { label: "Docs", href: "/docs" },
       ],
     },
     {
@@ -171,6 +173,12 @@ function MarketingLayout() {
               <FeatureDropdown />
               <ResourcesDropdown />
               <Link
+                to="/roadmap"
+                className="text-sm font-semibold text-neutral-600 transition-colors hover:text-neutral-900"
+              >
+                Roadmap
+              </Link>
+              <Link
                 to="/pricing"
                 className="text-sm font-semibold text-neutral-600 transition-colors hover:text-neutral-900"
               >
@@ -268,16 +276,6 @@ function MarketingLayout() {
 function ResourcesDropdown() {
   const resources = [
     {
-      label: "Blog",
-      href: "/blogs",
-      description: "SEO articles and guides.",
-    },
-    {
-      label: "Docs",
-      href: "/docs",
-      description: "Setup, MCP, skills, and self-hosting guides.",
-    },
-    {
       label: "MCP",
       href: "/docs/mcp",
       description: "Connect OpenSEO to AI clients.",
@@ -286,6 +284,21 @@ function ResourcesDropdown() {
       label: "Skills",
       href: "/docs/skills",
       description: "Focused OpenSEO workflows.",
+    },
+    {
+      label: "Strategy Library",
+      href: "/library",
+      description: "Practical SEO strategies grouped by topic.",
+    },
+    {
+      label: "Blog",
+      href: "/blogs",
+      description: "SEO articles and guides.",
+    },
+    {
+      label: "Docs",
+      href: "/docs",
+      description: "Setup, MCP, skills, and self-hosting guides.",
     },
   ];
 

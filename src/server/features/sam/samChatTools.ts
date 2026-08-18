@@ -19,6 +19,13 @@ import {
   getRankedKeywordsTool,
   searchLocalBusinessesTool,
 } from "@/server/mcp/tools/dataforseo-research-tools";
+import {
+  getBusinessProfileTool,
+  getBusinessReviewsTool,
+  getBusinessUpdatesTool,
+  getLocalRankGridTool,
+  listBusinessCategoriesTool,
+} from "@/server/mcp/tools/local-seo-tools";
 import { researchKeywordsTool } from "@/server/mcp/tools/research-keywords";
 import { saveKeywordsTool } from "@/server/mcp/tools/save-keywords";
 import {
@@ -217,6 +224,11 @@ export function buildSamMcpTools(
     search_local_businesses: adaptTool(searchLocalBusinessesTool),
     get_local_serp_results: adaptTool(getLocalSerpResultsTool),
     get_google_business_questions: adaptTool(getGoogleBusinessQuestionsTool),
+    get_business_profile: adaptTool(getBusinessProfileTool),
+    get_business_reviews: adaptTool(getBusinessReviewsTool),
+    get_business_updates: adaptTool(getBusinessUpdatesTool),
+    list_business_categories: adaptTool(listBusinessCategoriesTool),
+    get_local_rank_grid: adaptTool(getLocalRankGridTool),
     get_keyword_metrics: adaptTool(getKeywordMetricsTool),
     get_search_console_performance: adaptTool(getSearchConsolePerformanceTool),
     inspect_urls: adaptTool(inspectUrlsTool),

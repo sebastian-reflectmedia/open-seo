@@ -1,4 +1,8 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
+import {
+  researchScopeSchema,
+  type ResearchScope,
+} from "@/shared/researchScope";
 import type { SearchTab, SearchTabInput } from "./types";
 
 type TabsState = {
@@ -24,21 +28,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function toResearchScope(value: unknown): ResearchScope | null {
+  const parsed = researchScopeSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 function parseTabInput(value: unknown): SearchTabInput | null {
   if (!isRecord(value)) return null;
   if (value.type === "backlinks") {
     if (typeof value.target !== "string" || value.target === "") return null;
-    if (value.scope !== "domain" && value.scope !== "page") return null;
+    // Legacy backlinks tabs stored "page"; "domain" survives as a valid scope.
+    const scope =
+      value.scope === "page" ? "exact_url" : toResearchScope(value.scope);
+    if (!scope) return null;
     return {
       type: "backlinks",
       target: value.target,
-      scope: value.scope,
+      scope,
     };
   }
 
   if (value.type === "domain") {
     if (typeof value.domain !== "string" || value.domain === "") return null;
-    if (typeof value.subdomains !== "boolean") return null;
     // locationCode is optional in DomainSearchTabInput: tabs opened at the
     // default location persist no loc param, so accept a missing key.
     if (
@@ -47,10 +58,19 @@ function parseTabInput(value: unknown): SearchTabInput | null {
     ) {
       return null;
     }
+    // Legacy tabs stored an "include subdomains" boolean instead of a scope.
+    const scope =
+      toResearchScope(value.scope) ??
+      (typeof value.subdomains === "boolean"
+        ? value.subdomains
+          ? "subdomains"
+          : "domain"
+        : null);
+    if (!scope) return null;
     return {
       type: "domain",
       domain: value.domain,
-      subdomains: value.subdomains,
+      scope,
       locationCode:
         typeof value.locationCode === "number" ? value.locationCode : undefined,
     };

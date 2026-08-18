@@ -27,6 +27,7 @@ import { normalizeClientRegistrationRequest } from "@/server/mcp/oauth-registrat
 import { getPublicOrigin } from "@/server/mcp/public-origin";
 import { handleAuthenticatedOpenSeoMcpRequest } from "@/server/mcp/transport";
 import { resolveHostedContext } from "@/middleware/ensure-user/hosted";
+import { handleMcpApiKeyRequest } from "@/server/mcp/api-key-auth";
 
 const OAUTH_AUTHORIZE_PATH = "/api/auth/oauth2/authorize";
 const OAUTH_TOKEN_PATH = "/api/auth/oauth2/token";
@@ -445,6 +446,9 @@ export function createOpenSeoOAuthProvider(appFetch: AppFetch) {
   return {
     async fetch(request: Request, env: OpenSeoOAuthEnv, ctx: ExecutionContext) {
       const url = new URL(request.url);
+
+      const apiKeyResponse = await handleMcpApiKeyRequest(request, env, ctx);
+      if (apiKeyResponse) return apiKeyResponse;
 
       if (url.pathname === OAUTH_REGISTER_PATH) {
         return getProvider().fetch(

@@ -44,6 +44,7 @@ Good starting points:
 - `keyword-clustering`: groups keywords by intent and maps clusters to existing or proposed pages.
 - `competitive-landscape`: identifies who wins across a market and what content/backlink patterns are working.
 - `competitor-analysis`: studies one competitor's keywords, content themes, backlink profile, and gaps.
+- `local-seo`: audits a Google Business Profile against local competitors and maps Maps visibility around a location.
 - `link-prospecting`: finds likely link opportunities, discovers contact paths, and drafts outreach.
 
 ## Tool coaching
