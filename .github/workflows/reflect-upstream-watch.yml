@@ -26,8 +26,13 @@ on:
     - cron: "0 11 * * *"
   workflow_dispatch:
 
+# Needed for the GITHUB_TOKEN fallback path: without a PAT the job pushes the
+# sync branch and opens the PR as github-actions[bot], and `contents: read`
+# fails that push with a 403 only after the merge has already succeeded. A PAT
+# carries its own permissions and ignores these.
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
 
 concurrency:
   group: reflect-upstream-watch
