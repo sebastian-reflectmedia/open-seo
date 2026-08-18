@@ -20,18 +20,18 @@ that edits it, something has gone wrong.
 
 ## Files
 
-| Path | What |
-|---|---|
+| Path                  | What                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------- |
 | `apply-resources.mjs` | Writes the six Reflect values into `wrangler.jsonc`. Hard-fails rather than deploy an unverified config |
-| `upstream.lock` | The upstream release this fork is synced to. Bumped only by `reflect-upstream-watch`, never by hand |
+| `upstream.lock`       | The upstream release this fork is synced to. Bumped only by `reflect-upstream-watch`, never by hand     |
 
 ## Workflows
 
-| Workflow | When | What |
-|---|---|---|
-| `reflect-upstream-watch` | nightly 04:00 PT, or manual | New upstream release → merge the tag to a branch, bump the lock, open a PR |
+| Workflow                 | When                            | What                                                                                                       |
+| ------------------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `reflect-upstream-watch` | nightly 04:00 PT, or manual     | New upstream release → merge the tag to a branch, bump the lock, open a PR                                 |
 | `reflect-migration-gate` | PRs touching `drizzle/**/*.sql` | Blocks merge if a new migration DROPs a table or column, until someone adds the `migration-reviewed` label |
-| `reflect-deploy` | push to `main`, or manual | Apply config, capture a D1 restore point, export, deploy, smoke test both ways |
+| `reflect-deploy`         | push to `main`, or manual       | Apply config, capture a D1 restore point, export, deploy, smoke test both ways                             |
 
 Upstream's own `ci.yml` runs on the sync PR and gates the merge, which is why the
 watch workflow pushes with a PAT rather than `GITHUB_TOKEN` — events raised by

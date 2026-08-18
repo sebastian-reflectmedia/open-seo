@@ -29,10 +29,30 @@ const checkOnly = process.argv.includes("--check");
 // resources, which is why every entry is required and verified twice.
 const RESOURCES = [
   { env: "REFLECT_KV_ID", array: "kv_namespaces", binding: "KV", key: "id" },
-  { env: "REFLECT_OAUTH_KV_ID", array: "kv_namespaces", binding: "OAUTH_KV", key: "id" },
-  { env: "REFLECT_D1_NAME", array: "d1_databases", binding: "DB", key: "database_name" },
-  { env: "REFLECT_D1_ID", array: "d1_databases", binding: "DB", key: "database_id" },
-  { env: "REFLECT_R2_BUCKET", array: "r2_buckets", binding: "R2", key: "bucket_name" },
+  {
+    env: "REFLECT_OAUTH_KV_ID",
+    array: "kv_namespaces",
+    binding: "OAUTH_KV",
+    key: "id",
+  },
+  {
+    env: "REFLECT_D1_NAME",
+    array: "d1_databases",
+    binding: "DB",
+    key: "database_name",
+  },
+  {
+    env: "REFLECT_D1_ID",
+    array: "d1_databases",
+    binding: "DB",
+    key: "database_id",
+  },
+  {
+    env: "REFLECT_R2_BUCKET",
+    array: "r2_buckets",
+    binding: "R2",
+    key: "bucket_name",
+  },
 ];
 
 // Not a secret, and not negotiable. Our Cloudflare Access applications match the
@@ -52,11 +72,15 @@ function readEnv() {
   for (const r of RESOURCES) {
     const v = process.env[r.env];
     if (!v || !v.trim()) {
-      fail(`env ${r.env} is unset or empty (needed for ${r.array}.${r.binding}.${r.key})`);
+      fail(
+        `env ${r.env} is unset or empty (needed for ${r.array}.${r.binding}.${r.key})`,
+      );
       continue;
     }
     if (v.includes('"')) {
-      fail(`env ${r.env} contains a double quote, which cannot be a JSON string value here`);
+      fail(
+        `env ${r.env} contains a double quote, which cannot be a JSON string value here`,
+      );
       continue;
     }
     values[r.env] = v.trim();
@@ -73,7 +97,9 @@ function findBindingBlock(source, array, binding) {
   const arrayRe = new RegExp(`"${array}"\\s*:\\s*\\[`, "g");
   const arrayMatches = [...source.matchAll(arrayRe)];
   if (arrayMatches.length !== 1) {
-    fail(`expected exactly 1 "${array}" array in wrangler.jsonc, found ${arrayMatches.length}`);
+    fail(
+      `expected exactly 1 "${array}" array in wrangler.jsonc, found ${arrayMatches.length}`,
+    );
     return null;
   }
 
@@ -93,7 +119,10 @@ function findBindingBlock(source, array, binding) {
   }
   const arrayBody = source.slice(start, i - 1);
 
-  const blockRe = new RegExp(`\\{[^{}]*"binding"\\s*:\\s*"${binding}"[^{}]*\\}`, "g");
+  const blockRe = new RegExp(
+    `\\{[^{}]*"binding"\\s*:\\s*"${binding}"[^{}]*\\}`,
+    "g",
+  );
   const blocks = arrayBody.match(blockRe) ?? [];
   if (blocks.length !== 1) {
     fail(
@@ -113,7 +142,9 @@ function applyOne(source, { array, binding, key }, value) {
   const keyRe = new RegExp(`("${key}"\\s*:\\s*")([^"]*)(")`, "g");
   const hits = found.block.match(keyRe) ?? [];
   if (hits.length !== 1) {
-    fail(`expected exactly 1 "${key}" in binding "${binding}", found ${hits.length}`);
+    fail(
+      `expected exactly 1 "${key}" in binding "${binding}", found ${hits.length}`,
+    );
     return source;
   }
 
@@ -135,14 +166,19 @@ function applyPreviewUrls(source) {
   const mainRe = /^(\s*)"main"\s*:\s*"[^"]*"\s*,?\s*$/m;
   const m = source.match(mainRe);
   if (!m) {
-    fail(`could not find a top-level "main" key to anchor "preview_urls" insertion`);
+    fail(
+      `could not find a top-level "main" key to anchor "preview_urls" insertion`,
+    );
     return source;
   }
   const indent = m[1];
   const comment =
     `${indent}// Reflect: Access matches the production hostname exactly, so preview URLs\n` +
     `${indent}// are unauthenticated. Do not enable without an Access policy covering them.\n`;
-  return source.replace(mainRe, `${m[0]}\n${comment}${indent}"preview_urls": ${PREVIEW_URLS},`);
+  return source.replace(
+    mainRe,
+    `${m[0]}\n${comment}${indent}"preview_urls": ${PREVIEW_URLS},`,
+  );
 }
 
 /** Strip // and /* *\/ comments without mangling string contents. */
@@ -220,18 +256,24 @@ function verify(source, values) {
     }
     const want = values[r.env];
     if (entry[r.key] !== want) {
-      fail(`verify: ${r.array}.${r.binding}.${r.key} is "${entry[r.key]}", expected "${want}"`);
+      fail(
+        `verify: ${r.array}.${r.binding}.${r.key} is "${entry[r.key]}", expected "${want}"`,
+      );
     }
   }
 
   if (parsed.preview_urls !== PREVIEW_URLS) {
-    fail(`verify: preview_urls is ${JSON.stringify(parsed.preview_urls)}, expected ${PREVIEW_URLS}`);
+    fail(
+      `verify: preview_urls is ${JSON.stringify(parsed.preview_urls)}, expected ${PREVIEW_URLS}`,
+    );
   }
 
   // Guard the one setting whose loss is invisible: the cron that drives
   // scheduled rank checks.
   if (!parsed.triggers?.crons?.length) {
-    fail(`verify: triggers.crons is empty — scheduled rank checks would never run`);
+    fail(
+      `verify: triggers.crons is empty — scheduled rank checks would never run`,
+    );
   }
 }
 
@@ -254,7 +296,9 @@ function main() {
   if (checkOnly) {
     verify(source, values);
     if (problems.length) return report();
-    console.log("[apply-resources] check passed — config already targets Reflect resources");
+    console.log(
+      "[apply-resources] check passed — config already targets Reflect resources",
+    );
     return;
   }
 
