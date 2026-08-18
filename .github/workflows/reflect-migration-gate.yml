@@ -1,0 +1,80 @@
+name: Reflect — migration gate
+
+# Force a human to read destructive SQL exactly once per release.
+#
+# 9 of the 37 migrations in upstream `drizzle/` at the time this was written
+# contain DROP, including one dropping `projects` and `audits` and one dropping
+# five OAuth tables plus `jwks`. Time Travel and the pre-deploy export cover
+# recovery; this covers prevention, which is cheaper.
+#
+# Passes when the PR adds no destructive migration, or when someone has read the
+# SQL and applied the `migration-reviewed` label.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - "drizzle/**/*.sql"
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    if: github.repository == 'sebastian-reflectmedia/open-seo'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Look for destructive SQL in added migrations
+        id: scan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git diff --name-only --diff-filter=A "$BASE_SHA" "$HEAD_SHA" -- 'drizzle/*.sql' \
+            > /tmp/added.txt || true
+
+          : > /tmp/hits.txt
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            if git show "${HEAD_SHA}:${f}" | grep -qiE 'DROP[[:space:]]+(TABLE|COLUMN)'; then
+              printf '%s:\n' "$f" >> /tmp/hits.txt
+              git show "${HEAD_SHA}:${f}" \
+                | grep -iE 'DROP[[:space:]]+(TABLE|COLUMN)' | sed 's/^/    /' >> /tmp/hits.txt
+            fi
+          done < /tmp/added.txt
+
+          if [ -s /tmp/hits.txt ]; then
+            echo "destructive=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "destructive=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decide
+        env:
+          DESTRUCTIVE: ${{ steps.scan.outputs.destructive }}
+          REVIEWED: ${{ contains(github.event.pull_request.labels.*.name, 'migration-reviewed') }}
+        run: |
+          set -euo pipefail
+          if [ "$DESTRUCTIVE" != "true" ]; then
+            echo "No destructive migrations added. Nothing to gate."
+            exit 0
+          fi
+
+          echo "Destructive SQL in this PR:"
+          cat /tmp/hits.txt
+
+          if [ "$REVIEWED" = "true" ]; then
+            echo ""
+            echo "Label 'migration-reviewed' is present — a human has signed off. Passing."
+            exit 0
+          fi
+
+          echo ""
+          echo "::error::This PR adds migrations that DROP tables or columns and is not labelled."
+          echo "Read the SQL above against production, then add the 'migration-reviewed' label."
+          exit 1

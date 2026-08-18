@@ -1,0 +1,210 @@
+name: Reflect — upstream watch
+
+# Nightly: if upstream has published a release newer than .reflect/upstream.lock,
+# merge that tag to a branch and open a PR bumping the lock. Merging the PR is
+# the decision to ship; reflect-deploy.yml then asks for one more approval.
+#
+# We track TAGS, never upstream main. Upstream ships two or three releases a
+# week and every tag carries a release-notes/vX.Y.Z.md file, so the review diff
+# contains its own changelog.
+#
+# Checkout and push prefer REFLECT_SYNC_TOKEN, a fine-grained PAT, over the
+# default GITHUB_TOKEN. Events raised by GITHUB_TOKEN do not start new workflow
+# runs, so upstream's own ci.yml would never run on the sync PR and you would be
+# approving a release nothing had tested. Without the PAT this still works, it
+# just loses that check — reflect-deploy re-runs the tests and the build before
+# it migrates, so a broken release cannot reach production either way.
+#
+# Upstream release text and migration SQL are UNTRUSTED input. They reach the
+# shell only as environment variables or files, never through `${{ }}`
+# interpolation into a command line — a backtick in someone else's changelog
+# would otherwise run as command substitution on our runner.
+
+on:
+  schedule:
+    # 04:00 America/Vancouver year-round (11:00 UTC in PST, 12:00 in PDT).
+    - cron: "0 11 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reflect-upstream-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    # Keeps this file inert if it is ever synced to another fork.
+    if: github.repository == 'sebastian-reflectmedia/open-seo'
+    runs-on: ubuntu-latest
+    # The `secrets` context is not available in a step-level `if`, so collapse it
+    # to a plain string here and branch on that instead.
+    env:
+      HAS_PAT: ${{ secrets.REFLECT_SYNC_TOKEN != '' }}
+    steps:
+      # Falls back to GITHUB_TOKEN so the watch still works before a PAT exists.
+      # The fallback costs the CI gate: events raised by GITHUB_TOKEN do not
+      # start new workflow runs, so upstream's ci.yml will NOT run on the sync
+      # PR. reflect-deploy re-runs the tests and the build before it migrates,
+      # so a broken release still cannot reach production — but you would be
+      # approving a PR that nothing had tested. Add REFLECT_SYNC_TOKEN to get
+      # the check back.
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.REFLECT_SYNC_TOKEN || github.token }}
+
+      - name: Warn when running without a PAT
+        if: env.HAS_PAT != 'true'
+        run: |
+          echo "::warning::REFLECT_SYNC_TOKEN is not set. The sync PR will be opened with" \
+               "GITHUB_TOKEN, so upstream's ci.yml will not run on it. reflect-deploy still" \
+               "runs tests and the build before migrating."
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/every-app/open-seo.git
+          git fetch upstream --tags --quiet
+
+      - name: Resolve current and latest release
+        id: rel
+        env:
+          GH_TOKEN: ${{ secrets.REFLECT_SYNC_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          current=$(jq -r .tag .reflect/upstream.lock)
+          latest=$(gh api repos/every-app/open-seo/releases/latest --jq .tag_name)
+
+          # Tag names are used to build branch names and git refs. Constrain them
+          # before they reach any command line.
+          case "$latest" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::unexpected upstream tag format: $latest"; exit 1 ;;
+          esac
+
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest"   >> "$GITHUB_OUTPUT"
+          if [ "$current" = "$latest" ]; then
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+            echo "Already on $current — nothing to do."
+          else
+            echo "up_to_date=false" >> "$GITHUB_OUTPUT"
+            echo "Upstream released $latest; we are on $current."
+          fi
+
+      - name: Verify the tag resolves
+        if: steps.rel.outputs.up_to_date == 'false'
+        env:
+          NEW_TAG: ${{ steps.rel.outputs.latest }}
+        run: |
+          set -euo pipefail
+          git rev-parse -q --verify "refs/tags/${NEW_TAG}^{commit}" >/dev/null \
+            || { echo "::error::tag ${NEW_TAG} not found after fetch"; exit 1; }
+
+      - name: Scan new migrations for destructive SQL
+        if: steps.rel.outputs.up_to_date == 'false'
+        id: migrations
+        env:
+          CUR_TAG: ${{ steps.rel.outputs.current }}
+          NEW_TAG: ${{ steps.rel.outputs.latest }}
+        run: |
+          set -euo pipefail
+          git diff --name-only --diff-filter=A "$CUR_TAG" "$NEW_TAG" -- 'drizzle/*.sql' \
+            > /tmp/added-migrations.txt || true
+
+          : > /tmp/destructive.md
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            if git show "${NEW_TAG}:${f}" | grep -qiE 'DROP[[:space:]]+(TABLE|COLUMN)'; then
+              {
+                printf '\n- `%s`\n\n```sql\n' "$f"
+                git show "${NEW_TAG}:${f}" | grep -iE 'DROP[[:space:]]+(TABLE|COLUMN)'
+                printf '```\n'
+              } >> /tmp/destructive.md
+            fi
+          done < /tmp/added-migrations.txt
+
+          if [ -s /tmp/destructive.md ]; then
+            echo "has_destructive=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_destructive=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge the release and bump the lock
+        if: steps.rel.outputs.up_to_date == 'false'
+        id: branch
+        env:
+          NEW_TAG: ${{ steps.rel.outputs.latest }}
+        run: |
+          set -euo pipefail
+          branch="reflect/upstream-${NEW_TAG}"
+          git config user.name  "reflect-upstream-bot"
+          git config user.email "sebastian@reflectmedia.ca"
+          git checkout -b "$branch"
+
+          # New paths only (.reflect/, .github/workflows/reflect-*.yml) and
+          # wrangler.jsonc is never edited in git, so this merge cannot conflict.
+          # If it ever does, stop — do not auto-resolve someone else's release.
+          if ! git merge --no-edit "$NEW_TAG"; then
+            echo "::error::merge conflict against ${NEW_TAG} — resolve by hand, then rerun"
+            git merge --abort || true
+            exit 1
+          fi
+
+          jq --arg t "$NEW_TAG" '.tag = $t' .reflect/upstream.lock > /tmp/lock.json
+          mv /tmp/lock.json .reflect/upstream.lock
+          git add .reflect/upstream.lock
+          git commit -m "chore(reflect): track upstream ${NEW_TAG}"
+          git push --force-with-lease origin "$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the PR
+        if: steps.rel.outputs.up_to_date == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.REFLECT_SYNC_TOKEN || github.token }}
+          CUR_TAG: ${{ steps.rel.outputs.current }}
+          NEW_TAG: ${{ steps.rel.outputs.latest }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          HAS_DESTRUCTIVE: ${{ steps.migrations.outputs.has_destructive }}
+        run: |
+          set -euo pipefail
+
+          {
+            printf 'Tracks upstream release **%s** (was `%s`).\n\n' "$NEW_TAG" "$CUR_TAG"
+            printf 'Upstream changelog: `release-notes/%s.md` in this diff.\n' "$NEW_TAG"
+            printf 'Compare: https://github.com/every-app/open-seo/compare/%s...%s\n\n' \
+              "$CUR_TAG" "$NEW_TAG"
+            printf '### New migrations\n\n```\n'
+            if [ -s /tmp/added-migrations.txt ]; then cat /tmp/added-migrations.txt; else echo "(none)"; fi
+            printf '```\n'
+          } > /tmp/pr-body.md
+
+          if [ "$HAS_DESTRUCTIVE" = "true" ]; then
+            {
+              printf '\n### :warning: Destructive migrations in this release\n'
+              cat /tmp/destructive.md
+              printf '\nMerging this PR runs these against production D1. Read the SQL, then add\n'
+              printf 'the `migration-reviewed` label — `reflect-migration-gate` blocks the merge\n'
+              printf 'until you do. The deploy captures a Time Travel bookmark and a full export\n'
+              printf 'first, but restoring is still an outage.\n'
+            } >> /tmp/pr-body.md
+          fi
+
+          {
+            printf '\n---\nOpened by `reflect-upstream-watch`. Merging triggers `reflect-deploy`,\n'
+            printf 'which pauses for environment approval before touching production.\n'
+          } >> /tmp/pr-body.md
+
+          if gh pr view "$BRANCH" >/dev/null 2>&1; then
+            gh pr edit "$BRANCH" --title "chore(reflect): upstream ${NEW_TAG}" --body-file /tmp/pr-body.md
+          else
+            gh pr create --base main --head "$BRANCH" \
+              --title "chore(reflect): upstream ${NEW_TAG}" --body-file /tmp/pr-body.md
+          fi
+
+          if [ "$HAS_DESTRUCTIVE" = "true" ]; then
+            gh pr edit "$BRANCH" --add-label "destructive-migration" \
+              || echo "::warning::could not add label 'destructive-migration' — create it on the repo"
+          fi
