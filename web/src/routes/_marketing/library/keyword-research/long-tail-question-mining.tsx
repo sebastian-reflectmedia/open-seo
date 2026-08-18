@@ -6,6 +6,8 @@ import Content, {
 import { LibrarySpokePage } from "@/components/library-page";
 import { buildPageSeo } from "@/lib/seo";
 
+const PATH = "/library/keyword-research/long-tail-question-mining";
+
 export const Route = createFileRoute(
   "/_marketing/library/keyword-research/long-tail-question-mining",
 )({
@@ -13,7 +15,7 @@ export const Route = createFileRoute(
     buildPageSeo({
       title: "What Are Long-Tail Keywords? How to Find and Use Them",
       description: frontmatter.description,
-      path: "/library/keyword-research/long-tail-question-mining",
+      path: PATH,
       titleSuffix: "OpenSEO Library",
       ogType: "article",
     }),
@@ -22,6 +24,7 @@ export const Route = createFileRoute(
       title={frontmatter.title}
       description={frontmatter.description}
       crumb="Long-tail & question mining"
+      path={PATH}
     >
       <Content components={{ ...defaultMdxComponents }} />
     </LibrarySpokePage>

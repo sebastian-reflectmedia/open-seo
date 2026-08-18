@@ -6,6 +6,8 @@ import Content, {
 import { LibrarySpokePage } from "@/components/library-page";
 import { buildPageSeo } from "@/lib/seo";
 
+const PATH = "/library/keyword-research/search-intent-mapping";
+
 export const Route = createFileRoute(
   "/_marketing/library/keyword-research/search-intent-mapping",
 )({
@@ -13,7 +15,7 @@ export const Route = createFileRoute(
     buildPageSeo({
       title: "What Is Search Intent? Mapping Keywords Hot, Warm, and Cold",
       description: frontmatter.description,
-      path: "/library/keyword-research/search-intent-mapping",
+      path: PATH,
       titleSuffix: "OpenSEO Library",
       ogType: "article",
     }),
@@ -22,6 +24,7 @@ export const Route = createFileRoute(
       title={frontmatter.title}
       description={frontmatter.description}
       crumb="Search-intent mapping"
+      path={PATH}
     >
       <Content components={{ ...defaultMdxComponents }} />
     </LibrarySpokePage>

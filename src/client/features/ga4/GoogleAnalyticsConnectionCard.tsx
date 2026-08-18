@@ -19,22 +19,26 @@ import {
   listGa4Properties,
   setGa4Property,
 } from "@/serverFunctions/ga4";
+import { useSession } from "@/lib/auth-client";
 import {
-  GA4_OAUTH_APP_PENDING,
   GA4_SELF_HOSTED_SETUP_DOCS_URL,
+  isGa4ConnectAvailable,
 } from "@/shared/ga4";
 
 export function GoogleAnalyticsConnectionCard({
   projectId,
   onDismiss,
   dismissing = false,
+  heading,
 }: {
   projectId: string;
   onDismiss?: () => void;
   dismissing?: boolean;
+  heading?: React.ReactNode;
 }) {
   const hosted = isHostedClientAuthMode();
   const queryClient = useQueryClient();
+  const { data: session } = useSession();
   const [picking, setPicking] = React.useState(false);
   const [selection, setSelection] = React.useState<Ga4PropertySelection | null>(
     null,
@@ -50,7 +54,7 @@ export function GoogleAnalyticsConnectionCard({
   // approval, but keep the card for users who already hold a grant so they
   // can finish property selection or disconnect.
   const hiddenPendingApproval =
-    GA4_OAUTH_APP_PENDING &&
+    !isGa4ConnectAvailable(session?.user?.email) &&
     hosted &&
     !connected &&
     !connection?.currentUserHasGrant;
@@ -115,97 +119,100 @@ export function GoogleAnalyticsConnectionCard({
   if (hiddenPendingApproval) return null;
 
   return (
-    <IntegrationConnectionCard
-      title="Google Analytics"
-      icon={<GoogleAnalyticsLogo className="size-5" />}
-      status={
-        connectionQuery.isLoading
-          ? undefined
-          : selfHostedNeedsSetup
-            ? "setup_required"
-            : connected
-              ? "connected"
-              : "disconnected"
-      }
-    >
-      {connectionQuery.isLoading ? (
-        <div className="flex items-center gap-2 text-sm text-base-content/50">
-          <span className="loading loading-spinner loading-sm" />
-          Checking…
-        </div>
-      ) : selfHostedNeedsSetup ? (
-        <div className="space-y-3">
-          <GoogleOAuthSetupWarning
-            integrationName="Google Analytics"
-            docsUrl={GA4_SELF_HOSTED_SETUP_DOCS_URL}
-          />
-          {onDismiss ? (
-            <DismissButton onClick={onDismiss} disabled={dismissing} />
-          ) : null}
-        </div>
-      ) : connected && !picking ? (
-        <ConnectedState
-          displayName={connection?.propertyDisplayName ?? ""}
-          propertyId={connection?.propertyId ?? ""}
-          timeZone={connection?.propertyTimeZone ?? ""}
-          currencyCode={connection?.propertyCurrencyCode ?? ""}
-          connectedByEmail={connection?.connectedByEmail ?? null}
-          onChange={() => {
-            setSelection(null);
-            setPicking(true);
-          }}
-          onDisconnect={() => disconnectMutation.mutate()}
-          disconnecting={disconnectMutation.isPending}
-        />
-      ) : showPicker ? (
-        <Ga4PropertyPicker
-          loading={propertiesQuery.isLoading}
-          error={propertiesQuery.isError}
-          accounts={accounts}
-          selection={selection}
-          onSelect={setSelection}
-          onSave={() => selection && setPropertyMutation.mutate(selection)}
-          saving={setPropertyMutation.isPending}
-          onRetry={() => void propertiesQuery.refetch()}
-          secondaryAction={
-            connected
-              ? { label: "Cancel", onClick: () => setPicking(false) }
-              : onDismiss
-                ? {
-                    label: "Dismiss",
-                    disabled: dismissing,
-                    onClick: onDismiss,
-                  }
-                : {
-                    label: "Disconnect",
-                    destructive: true,
-                    disabled: disconnectMutation.isPending,
-                    onClick: () => disconnectMutation.mutate(),
-                  }
-          }
-        />
-      ) : (
-        <div className="space-y-4">
-          <p className="text-sm text-base-content/70">
-            Connect GA4 to understand what organic visitors do after they land
-            on your site.
-          </p>
-          <div className="flex flex-wrap items-center gap-1">
-            <button
-              type="button"
-              onClick={handleConnect}
-              className="inline-flex items-center gap-2.5 rounded-lg border border-base-300 bg-base-100 px-4 py-2.5 text-sm font-semibold text-base-content shadow-sm transition hover:bg-base-200 hover:shadow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              <GoogleGlyph className="size-[18px]" />
-              Connect with Google
-            </button>
+    <>
+      {heading}
+      <IntegrationConnectionCard
+        title="Google Analytics"
+        icon={<GoogleAnalyticsLogo className="size-5" />}
+        status={
+          connectionQuery.isLoading
+            ? undefined
+            : selfHostedNeedsSetup
+              ? "setup_required"
+              : connected
+                ? "connected"
+                : "disconnected"
+        }
+      >
+        {connectionQuery.isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-base-content/50">
+            <span className="loading loading-spinner loading-sm" />
+            Checking…
+          </div>
+        ) : selfHostedNeedsSetup ? (
+          <div className="space-y-3">
+            <GoogleOAuthSetupWarning
+              integrationName="Google Analytics"
+              docsUrl={GA4_SELF_HOSTED_SETUP_DOCS_URL}
+            />
             {onDismiss ? (
               <DismissButton onClick={onDismiss} disabled={dismissing} />
             ) : null}
           </div>
-        </div>
-      )}
-    </IntegrationConnectionCard>
+        ) : connected && !picking ? (
+          <ConnectedState
+            displayName={connection?.propertyDisplayName ?? ""}
+            propertyId={connection?.propertyId ?? ""}
+            timeZone={connection?.propertyTimeZone ?? ""}
+            currencyCode={connection?.propertyCurrencyCode ?? ""}
+            connectedByEmail={connection?.connectedByEmail ?? null}
+            onChange={() => {
+              setSelection(null);
+              setPicking(true);
+            }}
+            onDisconnect={() => disconnectMutation.mutate()}
+            disconnecting={disconnectMutation.isPending}
+          />
+        ) : showPicker ? (
+          <Ga4PropertyPicker
+            loading={propertiesQuery.isLoading}
+            error={propertiesQuery.isError}
+            accounts={accounts}
+            selection={selection}
+            onSelect={setSelection}
+            onSave={() => selection && setPropertyMutation.mutate(selection)}
+            saving={setPropertyMutation.isPending}
+            onRetry={() => void propertiesQuery.refetch()}
+            secondaryAction={
+              connected
+                ? { label: "Cancel", onClick: () => setPicking(false) }
+                : onDismiss
+                  ? {
+                      label: "Dismiss",
+                      disabled: dismissing,
+                      onClick: onDismiss,
+                    }
+                  : {
+                      label: "Disconnect",
+                      destructive: true,
+                      disabled: disconnectMutation.isPending,
+                      onClick: () => disconnectMutation.mutate(),
+                    }
+            }
+          />
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-base-content/70">
+              Connect GA4 to understand what organic visitors do after they land
+              on your site.
+            </p>
+            <div className="flex flex-wrap items-center gap-1">
+              <button
+                type="button"
+                onClick={handleConnect}
+                className="inline-flex items-center gap-2.5 rounded-lg border border-base-300 bg-base-100 px-4 py-2.5 text-sm font-semibold text-base-content shadow-sm transition hover:bg-base-200 hover:shadow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <GoogleGlyph className="size-[18px]" />
+                Connect with Google
+              </button>
+              {onDismiss ? (
+                <DismissButton onClick={onDismiss} disabled={dismissing} />
+              ) : null}
+            </div>
+          </div>
+        )}
+      </IntegrationConnectionCard>
+    </>
   );
 }
 

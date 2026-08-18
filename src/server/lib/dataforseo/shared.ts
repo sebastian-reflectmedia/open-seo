@@ -31,11 +31,18 @@ export type LlmTarget =
 export function buildLlmTarget(input: {
   type: "domain" | "keyword";
   value: string;
+  /**
+   * Domain targets only. Defaults to the historical behavior (subdomains
+   * included); research scopes narrower than `subdomains` pass `false`. There
+   * is no URL/path-level targeting in this API — page-level scoping happens by
+   * post-filtering the returned page URLs.
+   */
+  includeSubdomains?: boolean;
 }): LlmTarget {
   if (input.type === "domain") {
     return {
       domain: input.value,
-      include_subdomains: true,
+      include_subdomains: input.includeSubdomains ?? true,
       search_filter: "include",
       search_scope: ["any"],
     };

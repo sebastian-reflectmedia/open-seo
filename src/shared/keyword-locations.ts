@@ -388,6 +388,13 @@ export const LOCATION_OPTIONS: readonly LocationOption[] = [
     googleAdsOnly: true,
   },
   { code: 2586, label: "Pakistan", shortLabel: "PK", languageCode: "en" },
+  {
+    code: 2275,
+    label: "Palestine",
+    shortLabel: "PS",
+    languageCode: "ar",
+    googleAdsOnly: true,
+  },
   { code: 2591, label: "Panama", shortLabel: "PA", languageCode: "es" },
   {
     code: 2598,

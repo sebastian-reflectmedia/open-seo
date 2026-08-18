@@ -20,6 +20,9 @@ vi.mock("cloudflare:workers", () => ({
   // support; this suite uses object handlers, so a bare stand-in suffices.
   // oxlint-disable-next-line typescript/no-extraneous-class
   WorkerEntrypoint: class {},
+  // api-key-auth pulls the db client into this module graph; it reads env at
+  // module load.
+  env: {},
 }));
 
 vi.mock("@/lib/auth", () => ({

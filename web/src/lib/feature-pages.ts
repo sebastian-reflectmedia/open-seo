@@ -21,6 +21,11 @@ export type FeaturePage = {
   showMetrics?: boolean;
   useCases: string[];
   differentiators: string[];
+  featuredLink?: {
+    title: string;
+    description: string;
+    href: string;
+  };
   related: Array<{
     label: string;
     href: string;
@@ -112,7 +117,7 @@ export const featurePages = {
       {
         question: "Can I use OpenSEO as a free keyword research tool?",
         answer:
-          "Not unlimited: quality keyword data costs money everywhere, which is why the big SEO suites run $100/month and up. OpenSEO is the most affordable option; you can start for free, and paid plans start at $10/month with usage credits included. It's also open source, so you can self-host with your own DataForSEO account.",
+          "Not unlimited: quality keyword data costs money everywhere, which is why the big SEO suites run $100/month and up. You can start OpenSEO for free; the paid plan is $10/month with usage credits included. It's also open source, so you can self-host with your own DataForSEO account.",
       },
       {
         question: "Does OpenSEO show live search results?",
@@ -123,7 +128,7 @@ export const featurePages = {
     guides: {
       title: "The Keyword Research Strategy Library",
       description:
-        "Practitioner plays that treat keyword research as demand discovery, not a volume spreadsheet. Each guide is a full walkthrough with the copy-paste MCP prompt that runs it.",
+        "Practitioner strategies for using keyword research to discover demand. Each guide includes a full walkthrough and a copy-paste MCP prompt.",
       items: [
         {
           label: "Seed from conversation, not a volume report",
@@ -139,8 +144,7 @@ export const featurePages = {
         },
         {
           label: "Search-intent mapping (hot / warm / cold)",
-          description:
-            "Label every keyword by buying temperature before you write.",
+          description: "Sort keywords by buying temperature before you write.",
           href: "/library/keyword-research/search-intent-mapping",
         },
         {
@@ -151,7 +155,7 @@ export const featurePages = {
         },
       ],
       cta: {
-        label: "Browse the full Strategy Library",
+        label: "Browse all keyword research strategies",
         href: "/library/keyword-research",
       },
     },
@@ -208,7 +212,7 @@ export const featurePages = {
     ],
     related: [
       { label: "Domain Overview", href: "/features/domain-overview" },
-      { label: "Backlinks", href: "/features/backlinks" },
+      { label: "Backlinks", href: "/features/backlink-checker" },
       { label: "Keyword Research", href: "/features/keyword-research" },
     ],
     faqs: [
@@ -233,7 +237,7 @@ export const featurePages = {
     slug: FEATURE_PAGE_SLUGS.backlinks,
     eyebrow: "Backlinks",
     navDescription: "Check links and referring domains.",
-    title: "Backlink analysis for understanding a domain's link profile",
+    title: "Backlink checker for understanding a domain's link profile",
     description:
       "Analyze backlinks, referring domains, and linked pages without separating link research from the rest of your SEO workspace.",
     primaryKeyword: "backlink analysis",
@@ -279,13 +283,19 @@ export const featurePages = {
       "Self-host or adapt backlink reporting for your team's workflow.",
       "MCP support lets an AI agent pull backlink context during SEO research.",
     ],
+    featuredLink: {
+      title: "Free backlink checker",
+      description:
+        "Check any domain's backlink summary and top 15 backlinks. No signup required.",
+      href: "/backlink-checker",
+    },
     related: [
-      { label: "Free Backlink Checker", href: "/backlink-checker" },
       {
         label: "Link Prospecting",
         href: "/docs/skills/link-prospecting",
       },
       { label: "Domain Overview", href: "/features/domain-overview" },
+      { label: "OpenSEO MCP", href: "/features/mcp" },
     ],
     faqs: [
       {
@@ -361,7 +371,7 @@ export const featurePages = {
         href: "/docs/skills/competitor-analysis",
       },
       { label: "Keyword Research", href: "/features/keyword-research" },
-      { label: "Backlinks", href: "/features/backlinks" },
+      { label: "Backlinks", href: "/features/backlink-checker" },
     ],
     faqs: [
       {

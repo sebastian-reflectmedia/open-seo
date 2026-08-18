@@ -136,7 +136,7 @@ function BacklinkCheckerPage() {
             </span>
           </a>
           <a
-            href="/features/backlinks"
+            href="/features/backlink-checker"
             className="text-sm font-medium text-neutral-950 underline decoration-[var(--color-brand-accent)] underline-offset-4"
           >
             Learn about the Backlinks feature

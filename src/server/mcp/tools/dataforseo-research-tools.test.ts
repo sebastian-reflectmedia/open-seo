@@ -44,12 +44,16 @@ describe("DataForSEO research MCP tools", () => {
     mocks.getProjectForOrganization.mockResolvedValue(usProjectRow);
   });
 
-  it("searches local businesses without running rankings or Q&A", async () => {
-    const businessListings = vi
-      .fn()
-      .mockResolvedValue([
-        { title: "Acme Cafe", url: "https://acme-cafe.example" },
-      ]);
+  it("searches local businesses, rounding fractional radii and trimming rows", async () => {
+    const businessListings = vi.fn().mockResolvedValue([
+      {
+        title: "Acme Cafe",
+        url: "https://acme-cafe.example",
+        // Bulky fields that overflow MCP clients must not reach the response.
+        popular_times: { monday: [] },
+        attributes: { available_attributes: {} },
+      },
+    ]);
     const local = vi.fn();
     const questionsAnswers = vi.fn();
 
@@ -57,47 +61,80 @@ describe("DataForSEO research MCP tools", () => {
       business: { businessListings, questionsAnswers },
       serp: { local },
     });
-    const { searchLocalBusinessesTool } = researchTools;
 
-    const result = await searchLocalBusinessesTool.handler(
+    const result = await researchTools.searchLocalBusinessesTool.handler(
       {
         projectId: "project_1",
         query: "Acme Cafe",
         near: {
           latitude: 33.123456789,
           longitude: -84.987654321,
-          radiusKm: 5,
+          radiusKm: 1.5,
         },
         categories: ["cafe"],
       },
       toolContext,
     );
 
+    // Business Listings rejects fractional radii: 1.5 km rounds to 2.
     expect(businessListings).toHaveBeenCalledWith(
       expect.objectContaining({
-        locationCoordinate: "33.1234568,-84.9876543,5",
+        locationCoordinate: "33.1234568,-84.9876543,2",
         categories: ["cafe"],
       }),
     );
     expect(local).not.toHaveBeenCalled();
     expect(questionsAnswers).not.toHaveBeenCalled();
 
-    const content = z
-      .object({ businesses: z.array(z.object({ title: z.string() })) })
-      .passthrough()
-      .parse(result.structuredContent);
-    expect(content.businesses).toEqual([{ title: "Acme Cafe" }]);
+    expect(result.structuredContent.businesses).toEqual([
+      { title: "Acme Cafe", url: "https://acme-cafe.example" },
+    ]);
     expect(textContent(result)).toContain("title | category");
     expect(textContent(result)).toContain("Acme Cafe");
   });
 
-  it("fetches one local SERP with search_places disabled", async () => {
+  it("maps local business rating/review/claim filters onto the provider call", async () => {
+    const businessListings = vi.fn().mockResolvedValue([]);
+    mocks.createDataforseoClient.mockReturnValue({
+      business: { businessListings },
+    });
+
+    await researchTools.searchLocalBusinessesTool.handler(
+      {
+        projectId: "project_1",
+        near: { latitude: 33, longitude: -84, radiusKm: 5 },
+        minRating: 4,
+        minReviews: 25,
+        isClaimed: false,
+        sortBy: "reviews",
+        offset: 20,
+      },
+      toolContext,
+    );
+
+    expect(businessListings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        isClaimed: false,
+        filters: [
+          ["rating.value", ">=", 4],
+          "and",
+          ["rating.votes_count", ">=", 25],
+        ],
+        orderBy: ["rating.votes_count,desc"],
+        offset: 20,
+      }),
+    );
+  });
+
+  it("fetches one local SERP with search_places disabled and trims rows", async () => {
     const local = vi.fn().mockResolvedValue([
       {
-        type: "maps_search",
         title: "Acme Cafe",
         rank_group: 1,
         rank_absolute: 2,
+        // Dead-weight provider fields must not reach the response.
+        main_image: "https://lh3.example/huge",
+        feature_id: "0xabc:0xdef",
       },
     ]);
 
@@ -124,22 +161,17 @@ describe("DataForSEO research MCP tools", () => {
         locationCoordinate: "33.1234568,-84.9876543,14z",
         searchPlaces: false,
         searchType: "maps",
-        device: "desktop",
+        device: "mobile",
       }),
     );
 
     const content = z
-      .object({
-        results: z.array(
-          z.object({ rank_group: z.number(), rank_absolute: z.number() }),
-        ),
-      })
+      .object({ results: z.array(z.object({}).passthrough()) })
       .passthrough()
       .parse(result.structuredContent);
-    expect(content.results[0]).toMatchObject({
-      rank_group: 1,
-      rank_absolute: 2,
-    });
+    expect(content.results).toEqual([
+      { title: "Acme Cafe", rank_group: 1, rank_absolute: 2 },
+    ]);
     expect(textContent(result)).toContain("rank | title | rating");
     expect(textContent(result)).toContain("Acme Cafe");
   });
@@ -157,7 +189,7 @@ describe("DataForSEO research MCP tools", () => {
     const result = await getGoogleBusinessQuestionsTool.handler(
       {
         projectId: "project_1",
-        keyword: "Acme Cafe",
+        cid: "123",
         near: {
           latitude: 33.123456789,
           longitude: -84.987654321,
@@ -169,7 +201,8 @@ describe("DataForSEO research MCP tools", () => {
 
     expect(questionsAnswers).toHaveBeenCalledWith(
       expect.objectContaining({
-        keyword: "Acme Cafe",
+        // The identifier trio rides the shared cid:/place_id: prefixes.
+        keyword: "cid:123",
         locationCoordinate: "33.1234568,-84.9876543,5000",
       }),
     );
@@ -182,33 +215,6 @@ describe("DataForSEO research MCP tools", () => {
     ]);
     expect(textContent(result)).toContain("question | asked by");
     expect(textContent(result)).toContain("Do you serve breakfast?");
-  });
-
-  it("passes only explicit brand exclusions to ranked keyword filters", async () => {
-    const rankedKeywords = vi.fn().mockResolvedValue({
-      items: [],
-      totalCount: 0,
-    });
-
-    mocks.createDataforseoClient.mockReturnValue({
-      domain: { rankedKeywords },
-    });
-    const { getRankedKeywordsTool } = researchTools;
-
-    await getRankedKeywordsTool.handler(
-      {
-        projectId: "project_1",
-        target: "acmeexample.com",
-        excludeBrandTerms: ["acme"],
-      },
-      toolContext,
-    );
-
-    expect(rankedKeywords).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filters: [["keyword_data.keyword", "not_ilike", "%acme%"]],
-      }),
-    );
   });
 
   it("filters SERP competitors only by explicit excluded domains", async () => {
@@ -380,5 +386,69 @@ describe("DataForSEO research MCP tools", () => {
       .passthrough()
       .parse(result.structuredContent).keywords;
     expect(rows[0]).not.toHaveProperty("monthly_searches");
+  });
+});
+
+describe("get_ranked_keywords scope handling", () => {
+  const rankedKeywords =
+    vi.fn<
+      (input: {
+        filters?: unknown[];
+      }) => Promise<{ items: unknown[]; totalCount: number }>
+    >();
+
+  beforeEach(() => {
+    mocks.getProjectForOrganization.mockResolvedValue(usProjectRow);
+    rankedKeywords.mockResolvedValue({ items: [], totalCount: 0 });
+    mocks.createDataforseoClient.mockReturnValue({
+      domain: { rankedKeywords },
+    });
+  });
+
+  it("passes only explicit brand exclusions to ranked keyword filters", async () => {
+    await researchTools.getRankedKeywordsTool.handler(
+      {
+        projectId: "project_1",
+        target: "acmeexample.com",
+        scope: "subdomains",
+        excludeBrandTerms: ["acme"],
+      },
+      toolContext,
+    );
+
+    expect(rankedKeywords).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: [["keyword_data.keyword", "not_ilike", "%acme%"]],
+      }),
+    );
+  });
+
+  it("defaults a bare domain to subdomains scope with no scope filters", async () => {
+    const result = await researchTools.getRankedKeywordsTool.handler(
+      { projectId: "project_1", target: "acmeexample.com" },
+      toolContext,
+    );
+
+    expect(rankedKeywords).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: "acmeexample.com",
+        filters: undefined,
+      }),
+    );
+    expect(result.structuredContent).toMatchObject({
+      target: "acmeexample.com",
+      scope: "subdomains",
+    });
+  });
+
+  // The clause shape itself is pinned in researchScopeFilters.test.ts; here
+  // only "the scope filter reaches the API call" is the invariant.
+  it("sends scope filters for an explicit narrower scope", async () => {
+    await researchTools.getRankedKeywordsTool.handler(
+      { projectId: "project_1", target: "acmeexample.com", scope: "domain" },
+      toolContext,
+    );
+
+    expect(Array.isArray(rankedKeywords.mock.calls[0]?.[0].filters)).toBe(true);
   });
 });

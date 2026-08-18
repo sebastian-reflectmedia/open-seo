@@ -4,9 +4,11 @@ import { getBacklinksOverviewTool } from "./get-backlinks-overview";
 import { getBacklinksProfileTool } from "./get-backlinks-profile";
 import { getDomainKeywordSuggestionsTool } from "./get-domain-keyword-suggestions";
 import { getRankTrackerTool } from "./get-rank-tracker";
+import { getBusinessUpdatesTool } from "./local-seo-tools";
 import { getSerpResultsTool } from "./get-serp-results";
 import { researchKeywordsTool } from "./research-keywords";
 import { makeToolContext, textContent } from "./tool-test-support";
+import type * as backlinksTargetModule from "@/server/lib/dataforseoBacklinksTarget";
 
 // Verifies that each tool renders its actual row data into the text content
 // block (not just a count), across the tools whose data comes from OpenSEO
@@ -16,6 +18,7 @@ import { makeToolContext, textContent } from "./tool-test-support";
 const mocks = vi.hoisted(() => ({
   getProjectForOrganization: vi.fn(),
   createDataforseoClient: vi.fn(),
+  fetchBusinessDataTaskResult: vi.fn(),
   research: vi.fn(),
   profileOverview: vi.fn(),
   profileReferringDomainsPage: vi.fn(),
@@ -29,9 +32,18 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
-vi.mock("@/server/lib/dataforseo", () => ({
-  createDataforseoClient: mocks.createDataforseoClient,
-}));
+vi.mock("@/server/lib/dataforseo", async () => {
+  // Real target normalizer (pure, leaf module) so scope resolution in the
+  // backlinks tools matches production.
+  const targets = await vi.importActual<typeof backlinksTargetModule>(
+    "@/server/lib/dataforseoBacklinksTarget",
+  );
+  return {
+    createDataforseoClient: mocks.createDataforseoClient,
+    fetchBusinessDataTaskResult: mocks.fetchBusinessDataTaskResult,
+    normalizeBacklinksTarget: targets.normalizeBacklinksTarget,
+  };
+});
 vi.mock("@/server/features/projects/services/ProjectService", () => ({
   ProjectService: {
     getProjectForOrganization: mocks.getProjectForOrganization,
@@ -317,6 +329,37 @@ describe("MCP tool text output (service-backed tools)", () => {
     expect(out).toContain("keyword | rank | volume | CPC | url");
     expect(out).toContain(
       "seo tools | 4 | 1000 | 3.20 | https://example.com/tools",
+    );
+  });
+
+  it("get_business_updates renders each collected post as a text table", async () => {
+    const updatesTaskPost = vi.fn().mockResolvedValue("task-1");
+    mocks.createDataforseoClient.mockReturnValue({
+      business: { updatesTaskPost },
+    });
+    mocks.fetchBusinessDataTaskResult.mockResolvedValue({
+      status: "completed",
+      result: {
+        items: [
+          {
+            rank_absolute: 1,
+            post_date: "04/02/2020 00:00:00",
+            post_text: "We are open for takeaway.",
+            url: "https://search.google.com/local/posts?q=acme",
+          },
+        ],
+      },
+    });
+
+    const result = await getBusinessUpdatesTool.handler(
+      { projectId: "project_1", cid: "123" },
+      toolContext,
+    );
+
+    const out = textContent(result);
+    expect(out).toContain("# | posted | post | url");
+    expect(out).toContain(
+      "1 | 04/02/2020 00:00:00 | We are open for takeaway. | https://search.google.com/local/posts?q=acme",
     );
   });
 

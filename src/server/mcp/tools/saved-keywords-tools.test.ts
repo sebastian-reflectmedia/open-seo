@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { listSavedKeywordsTool } from "./list-saved-keywords";
 import { saveKeywordsTool } from "./save-keywords";
@@ -60,6 +61,43 @@ describe("saved keyword MCP tools", () => {
       savedCount: 1,
       tags: ["Content"],
       tagMode: "append",
+    });
+  });
+
+  it("accepts and passes keyword metrics through save_keywords", async () => {
+    mocks.saveKeywords.mockResolvedValue({
+      success: true,
+      savedKeywordIds: ["saved_1"],
+    });
+    const metrics = [
+      {
+        keyword: "technical seo",
+        searchVolume: 120,
+        keywordDifficulty: 18,
+        cpc: 2.5,
+        competition: 0.42,
+        intent: "commercial" as const,
+        monthlySearches: [
+          { year: 2026, month: 7, searchVolume: 110 },
+          { year: 2026, month: 8, searchVolume: 120 },
+        ],
+      },
+    ];
+    const args = z.object(saveKeywordsTool.config.inputSchema).parse({
+      projectId: "project_1",
+      keywords: ["technical seo"],
+      metrics,
+    });
+
+    await saveKeywordsTool.handler(args, toolContext);
+
+    expect(mocks.saveKeywords).toHaveBeenCalledWith({
+      projectId: "project_1",
+      keywords: ["technical seo"],
+      metrics,
+      tagMode: "append",
+      locationCode: 2840,
+      languageCode: "en",
     });
   });
 

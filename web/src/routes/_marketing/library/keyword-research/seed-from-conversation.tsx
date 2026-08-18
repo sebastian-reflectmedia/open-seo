@@ -6,6 +6,8 @@ import Content, {
 import { LibrarySpokePage } from "@/components/library-page";
 import { buildPageSeo } from "@/lib/seo";
 
+const PATH = "/library/keyword-research/seed-from-conversation";
+
 export const Route = createFileRoute(
   "/_marketing/library/keyword-research/seed-from-conversation",
 )({
@@ -14,7 +16,7 @@ export const Route = createFileRoute(
       title:
         "Seed Keywords from Customer Conversations (Keyword Research Without a Paid Tool)",
       description: frontmatter.description,
-      path: "/library/keyword-research/seed-from-conversation",
+      path: PATH,
       titleSuffix: "OpenSEO Library",
       ogType: "article",
     }),
@@ -23,6 +25,7 @@ export const Route = createFileRoute(
       title={frontmatter.title}
       description={frontmatter.description}
       crumb="Seed from conversation"
+      path={PATH}
     >
       <Content components={{ ...defaultMdxComponents }} />
     </LibrarySpokePage>

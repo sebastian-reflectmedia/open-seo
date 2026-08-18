@@ -84,6 +84,7 @@ export const {
   user,
   session,
   account,
+  apikey,
   verification,
   organization,
   member,

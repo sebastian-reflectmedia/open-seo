@@ -305,6 +305,10 @@ async function buildInventory(db: Db, user: UserRow) {
       schema.ga4Connections,
       eq(schema.ga4Connections.connectedByUserId, user.id),
     ),
+    api_keys: await db.$count(
+      schema.apikey,
+      eq(schema.apikey.referenceId, user.id),
+    ),
   };
 
   return {
@@ -486,6 +490,11 @@ async function erasePostgres(db: Db, user: UserRow, organizationIds: string[]) {
     await tx
       .delete(schema.ga4Connections)
       .where(eq(schema.ga4Connections.connectedByUserId, user.id));
+    // apikey.reference_id mirrors the plugin's polymorphic schema and has no
+    // user FK, so keys don't cascade with the user row.
+    await tx
+      .delete(schema.apikey)
+      .where(eq(schema.apikey.referenceId, user.id));
     await tx
       .update(schema.audits)
       .set({ startedByUserId: "gdpr-deleted-user" })

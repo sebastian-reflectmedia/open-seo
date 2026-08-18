@@ -126,6 +126,34 @@ const toolCategories: ToolCategory[] = [
         title: "Get business questions",
         description: "Read Google Business Profile Q&A rows.",
       },
+      {
+        name: "get_business_profile",
+        title: "Get business profile",
+        description:
+          "Audit a Google Business Profile's categories, rating, hours, and claim status.",
+      },
+      {
+        name: "get_business_reviews",
+        title: "Get business reviews",
+        description:
+          "Collect Google reviews, including owner replies and other-site sources.",
+      },
+      {
+        name: "get_business_updates",
+        title: "Get business updates",
+        description: "Check posting activity on a Google Business Profile.",
+      },
+      {
+        name: "list_business_categories",
+        title: "List business categories",
+        description: "Find valid Google Business category slugs.",
+      },
+      {
+        name: "get_local_rank_grid",
+        title: "Get local rank grid",
+        description:
+          "Check Google Maps rank at each point of a grid around a business.",
+      },
     ],
   },
   {

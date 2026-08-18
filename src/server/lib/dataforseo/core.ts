@@ -132,6 +132,10 @@ export const labsApi = () => new DataforseoLabsApi(API_BASE, http());
 export const keywordsDataApi = () => new KeywordsDataApi(API_BASE, http());
 export const serpApi = () => new SerpApi(API_BASE, http());
 export const businessDataApi = () => new BusinessDataApi(API_BASE, http());
+// task_post creates a billed task. A 5xx does not prove the provider skipped
+// the charge, so this client must not replay it (same rule as Lighthouse).
+export const businessDataTaskApi = () =>
+  new BusinessDataApi(API_BASE, http(undefined, 0));
 // Lighthouse live is a billed, non-idempotent POST. A 5xx does not prove the
 // provider skipped the charge, so this client must not replay it.
 export const onPageApi = () => new OnPageApi(API_BASE, http(undefined, 0));

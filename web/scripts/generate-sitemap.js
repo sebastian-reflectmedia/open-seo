@@ -28,6 +28,7 @@ const STATIC_PATHS = [
   "/backlink-checker",
   "/open-source-seo",
   "/google-search-console-mcp",
+  "/roadmap",
   ...Object.values(FEATURE_PAGE_SLUGS).map((slug) => `/features/${slug}`),
 ];
 
@@ -95,9 +96,11 @@ function getLibraryPaths(dir = LIBRARY_ROUTES_DIR, segments = []) {
     const slug = entry.name.replace(/\.tsx$/i, "");
     const pathSegments = slug === "index" ? segments : [...segments, slug];
 
-    return pathSegments.length > 0
-      ? [`/library/${pathSegments.join("/")}`]
-      : [];
+    return [
+      pathSegments.length > 0
+        ? `/library/${pathSegments.join("/")}`
+        : "/library",
+    ];
   });
 }
 

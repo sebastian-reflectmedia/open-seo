@@ -31,6 +31,7 @@ MCP connects your agent to OpenSEO data. Skills tell your agent which SEO workfl
 - [Keyword Clustering](/docs/skills/keyword-clustering): turn keyword lists into page groups, content priorities, and cannibalization checks.
 - [Competitive Landscape](/docs/skills/competitive-landscape): map who is winning across a market and where your openings are.
 - [Competitor Analysis](/docs/skills/competitor-analysis): analyze one competitor and turn the research into strategic takeaways.
+- [Local SEO](/docs/skills/local-seo): audit a Google Business Profile, compare it to local competitors, and map Maps visibility around a location.
 
 ## Promotion workflows
 
