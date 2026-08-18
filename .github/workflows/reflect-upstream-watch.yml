@@ -8,10 +8,12 @@ name: Reflect — upstream watch
 # week and every tag carries a release-notes/vX.Y.Z.md file, so the review diff
 # contains its own changelog.
 #
-# Checkout and push use REFLECT_SYNC_TOKEN, a fine-grained PAT, NOT the default
-# GITHUB_TOKEN. Events raised by GITHUB_TOKEN do not start new workflow runs, so
-# upstream's own ci.yml would never run on the sync PR and we would be approving
-# a release nothing had tested.
+# Checkout and push prefer REFLECT_SYNC_TOKEN, a fine-grained PAT, over the
+# default GITHUB_TOKEN. Events raised by GITHUB_TOKEN do not start new workflow
+# runs, so upstream's own ci.yml would never run on the sync PR and you would be
+# approving a release nothing had tested. Without the PAT this still works, it
+# just loses that check — reflect-deploy re-runs the tests and the build before
+# it migrates, so a broken release cannot reach production either way.
 #
 # Upstream release text and migration SQL are UNTRUSTED input. They reach the
 # shell only as environment variables or files, never through `${{ }}`
@@ -36,12 +38,30 @@ jobs:
     # Keeps this file inert if it is ever synced to another fork.
     if: github.repository == 'sebastian-reflectmedia/open-seo'
     runs-on: ubuntu-latest
+    # The `secrets` context is not available in a step-level `if`, so collapse it
+    # to a plain string here and branch on that instead.
+    env:
+      HAS_PAT: ${{ secrets.REFLECT_SYNC_TOKEN != '' }}
     steps:
+      # Falls back to GITHUB_TOKEN so the watch still works before a PAT exists.
+      # The fallback costs the CI gate: events raised by GITHUB_TOKEN do not
+      # start new workflow runs, so upstream's ci.yml will NOT run on the sync
+      # PR. reflect-deploy re-runs the tests and the build before it migrates,
+      # so a broken release still cannot reach production — but you would be
+      # approving a PR that nothing had tested. Add REFLECT_SYNC_TOKEN to get
+      # the check back.
       - name: Checkout fork
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.REFLECT_SYNC_TOKEN }}
+          token: ${{ secrets.REFLECT_SYNC_TOKEN || github.token }}
+
+      - name: Warn when running without a PAT
+        if: env.HAS_PAT != 'true'
+        run: |
+          echo "::warning::REFLECT_SYNC_TOKEN is not set. The sync PR will be opened with" \
+               "GITHUB_TOKEN, so upstream's ci.yml will not run on it. reflect-deploy still" \
+               "runs tests and the build before migrating."
 
       - name: Fetch upstream
         run: |
@@ -51,7 +71,7 @@ jobs:
       - name: Resolve current and latest release
         id: rel
         env:
-          GH_TOKEN: ${{ secrets.REFLECT_SYNC_TOKEN }}
+          GH_TOKEN: ${{ secrets.REFLECT_SYNC_TOKEN || github.token }}
         run: |
           set -euo pipefail
           current=$(jq -r .tag .reflect/upstream.lock)
@@ -143,7 +163,7 @@ jobs:
       - name: Open or update the PR
         if: steps.rel.outputs.up_to_date == 'false'
         env:
-          GH_TOKEN: ${{ secrets.REFLECT_SYNC_TOKEN }}
+          GH_TOKEN: ${{ secrets.REFLECT_SYNC_TOKEN || github.token }}
           CUR_TAG: ${{ steps.rel.outputs.current }}
           NEW_TAG: ${{ steps.rel.outputs.latest }}
           BRANCH: ${{ steps.branch.outputs.branch }}

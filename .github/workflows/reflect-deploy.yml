@@ -63,6 +63,17 @@ jobs:
       - name: Point config at Reflect resources
         run: node scripts/reflect-apply-resources.mjs
 
+      # MUST come before the migrate step. `pnpm run deploy` is
+      # `db:migrate:prod && build && wrangler deploy` — it migrates FIRST and
+      # builds SECOND, so a release that does not compile would already have
+      # rewritten production D1 by the time it failed. Proving the tree is good
+      # here means a broken release never reaches the database. The build output
+      # is reused by `pnpm run deploy` below rather than rebuilt.
+      - name: Verify the release builds and passes tests
+        run: |
+          pnpm run test:ci
+          pnpm vite build
+
       - name: Capture a D1 restore point
         id: restore
         run: |
