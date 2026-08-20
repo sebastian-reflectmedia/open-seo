@@ -21,10 +21,11 @@ that edits it, something has gone wrong.
 
 ## Files
 
-| Path                                  | What                                                                                                    |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `scripts/reflect-apply-resources.mjs` | Writes the six Reflect values into `wrangler.jsonc`. Hard-fails rather than deploy an unverified config |
-| `.reflect/upstream.lock`              | The upstream release this fork is synced to. Bumped only by `reflect-upstream-watch`, never by hand     |
+| Path                                      | What                                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `scripts/reflect-apply-resources.mjs`     | Writes the six Reflect values into `wrangler.jsonc`. Hard-fails rather than deploy an unverified config |
+| `scripts/reflect-classify-migrations.mjs` | Decides whether a release may ship unattended. `--self-test` runs its own tests                         |
+| `.reflect/upstream.lock`                  | The upstream release this fork is synced to. Bumped only by `reflect-upstream-watch`, never by hand     |
 
 ### Why the script is in `scripts/` and not here
 
@@ -48,13 +49,88 @@ cannot conflict on merge; only two edits to the same path can.
 
 | Workflow                 | When                            | What                                                                                                       |
 | ------------------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `reflect-upstream-watch` | nightly 04:00 PT, or manual     | New upstream release → merge the tag to a branch, bump the lock, open a PR                                 |
+| `reflect-upstream-watch` | nightly 04:00 PT, or manual     | New upstream release → merge the tag to a branch, bump the lock, classify the risk, open a PR              |
 | `reflect-migration-gate` | PRs touching `drizzle/**/*.sql` | Blocks merge if a new migration DROPs a table or column, until someone adds the `migration-reviewed` label |
-| `reflect-deploy`         | push to `main`, or manual       | Apply config, capture a D1 restore point, export, deploy, smoke test both ways                             |
+| `reflect-auto-ship`      | CI settles on a sync PR         | Merges a PR labelled `auto-ship` once it is CLEAN. `--merge` only, never a squash                          |
+| `reflect-deploy`         | push to `main`, or manual       | Apply config, capture a D1 restore point, export, deploy, smoke test, roll the code back if a check fails  |
 
 Upstream's own `ci.yml` runs on the sync PR and gates the merge, which is why the
 watch workflow pushes with a PAT rather than `GITHUB_TOKEN` — events raised by
 `GITHUB_TOKEN` do not start new workflow runs.
+
+## What ships without asking
+
+Half of upstream's releases change nothing about the database. Those do not need a
+human, because a code-only rollback puts everything back exactly as it was.
+`scripts/reflect-classify-migrations.mjs` sorts each release into one of three
+buckets and the pipeline follows it:
+
+| Class      | Means                                                              | Merge               | Deploy                          |
+| ---------- | ------------------------------------------------------------------ | ------------------- | ------------------------------- |
+| `none`     | no new migrations                                                  | `reflect-auto-ship` | `production-auto`, no reviewer  |
+| `additive` | every statement is `CREATE TABLE` / `CREATE INDEX`                 | `reflect-auto-ship` | `production-auto`, no reviewer  |
+| `risky`    | `ALTER`, `DROP`, `INSERT`/`UPDATE`/`DELETE`, `PRAGMA`, unparseable | a human, on purpose | `production`, required reviewer |
+
+Measured over the 18 releases from v0.0.18 to v0.1.6: 7 `none`, 2 `additive`,
+9 `risky`. So roughly half ship unattended and the half that can actually hurt
+still stops for a person.
+
+**Why the line is drawn there.** `wrangler rollback` restores the Worker, but
+drizzle migrations are forward-only — upstream ships no down migrations. Once a
+release has migrated production D1, reverting the code leaves the schema ahead of
+it. The only route back for data is `wrangler d1 time-travel restore`, which
+rewinds the entire database to a bookmark and discards every write since,
+including writes that had nothing to do with the bad release. That is an outage
+with data loss, not a rollback. So "we can roll this back" is only honestly true
+for releases that leave existing tables alone, and those are exactly the ones
+allowed through.
+
+Anything the classifier cannot read — an unresolvable diff, an empty migration, a
+statement it does not recognise — is treated as `risky`. A wrong guess here would
+auto-apply a migration that rewrites production data, so ambiguity always resolves
+toward the human.
+
+To stop a release that was cleared, remove its `auto-ship` label before CI
+finishes; `reflect-auto-ship` re-classifies at merge time and strips the label
+itself if the two ever disagree.
+
+### Switching it on
+
+**All of this is dormant until the repository variable `REFLECT_AUTO_SHIP` is set
+to `true`.** While it is unset, the classification is computed and reported, the
+`auto-ship` label is never applied, and every release routes to `production` with
+a required reviewer — exactly the behaviour that existed before. Landing the code
+changes nothing on its own.
+
+Before setting the variable:
+
+1. **Create a `production-auto` environment** with no required reviewers, and add
+   the same seven secrets as `production`. They are environment-scoped, so the new
+   environment starts with none of them and the deploy fails its precondition
+   check until they are there. Do not move them to repo-level secrets to avoid the
+   duplication: repo secrets are readable by every workflow in the repo, including
+   upstream's `ci.yml`, whose contents upstream controls.
+2. **Set `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET`** on both environments.
+   Unattended deploys refuse to run without them. The anonymous smoke test only
+   proves Access is in front of the Worker; the authenticated one is the only check
+   that proves the app still serves, and without it an auto-deploy could ship a
+   broken release and report success.
+3. **Create the `auto-ship` label.**
+
+Worth doing regardless: **turn off squash and rebase merging** on the fork, leaving
+only merge commits. A squash-merged sync PR drops the ancestry link to the upstream
+tag, and the next release then conflicts against every file the two releases share
+— that is what broke the v0.1.6 sync. `reflect-upstream-watch` now detects and
+repairs it with a `-s ours` merge, but not allowing it in the first place is
+better.
+
+To switch it back off, unset `REFLECT_AUTO_SHIP` — releases go straight back to
+review. Deleting the `production-auto` environment is not the way to do it: GitHub
+recreates a referenced environment on demand, with no reviewers and no secrets, so
+cleared releases would then fail the precondition check instead of deploying at
+all. That failure is the safety net, not the off switch. It is also the reason the
+seven secrets stay environment-scoped: an auto-created environment inherits
+nothing, so a half-finished setup cannot deploy unreviewed.
 
 ## Deploying by hand
 

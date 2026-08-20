@@ -2,9 +2,19 @@ name: Reflect — deploy
 
 # Deploy the fork to Reflect's self-hosted worker.
 #
-# Merging a reflect-upstream-watch PR is the intent to ship; the `production`
-# environment's required reviewer is the last look before production D1 is
-# migrated. Nothing here runs without that approval.
+# Merging a reflect-upstream-watch PR is the intent to ship. Whether a human
+# also has to approve the deploy depends on what the release does to the
+# database, because that is what decides whether we can actually undo it:
+#
+#   no migrations, or only new tables  ->  `production-auto`, no reviewer
+#   anything touching existing data   ->  `production`, required reviewer
+#
+# scripts/reflect-classify-migrations.mjs draws that line and anything it cannot
+# read falls to `production`. The reasoning lives in that file; the short
+# version is that `wrangler rollback` restores the Worker but drizzle
+# migrations are forward-only, so a release that has already rewritten
+# production D1 cannot be un-run. Time Travel rewinds the entire database and
+# drops every write since the bookmark, which is an outage, not a rollback.
 #
 # Order matters: scripts/reflect-apply-resources.mjs MUST run before `pnpm run deploy`,
 # because that script is `db:migrate:prod && build && wrangler deploy` and the
@@ -31,10 +41,69 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  # Runs with no environment and therefore no production secrets — it only reads
+  # SQL out of git. Its output picks the environment the deploy job runs in,
+  # which is what makes the reviewer requirement conditional.
+  classify:
     if: github.repository == 'sebastian-reflectmedia/open-seo'
     runs-on: ubuntu-latest
-    environment: production
+    outputs:
+      class: ${{ steps.risk.outputs.class }}
+      environment: ${{ steps.env.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Self-test the classifier
+        run: node scripts/reflect-classify-migrations.mjs --self-test
+
+      - name: Classify the migrations this push adds
+        id: risk
+        env:
+          # Absent on workflow_dispatch, and all-zeros for a branch's first
+          # push. The script treats an unresolvable range as risky.
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          base="${BEFORE:-}"
+          case "$base" in
+            "" | 0000000000000000000000000000000000000000)
+              echo "No usable base ref for this event — requiring review."
+              echo "class=risky" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+          node scripts/reflect-classify-migrations.mjs --base "$base" --head "$GITHUB_SHA"
+
+      # Unattended deploying is off until the `production-auto` environment
+      # exists and REFLECT_AUTO_SHIP is set to true. Without that switch every
+      # release routes to `production` and waits for a reviewer, which is the
+      # behaviour this repo had before any of this existed — so merging this
+      # change on its own alters nothing.
+      - name: Choose the environment
+        id: env
+        env:
+          RISK: ${{ steps.risk.outputs.class }}
+          ENABLED: ${{ vars.REFLECT_AUTO_SHIP }}
+        run: |
+          set -euo pipefail
+          environment=production
+          if [ "${ENABLED:-}" = "true" ]; then
+            case "${RISK:-risky}" in
+              none|additive) environment=production-auto ;;
+            esac
+          else
+            echo "REFLECT_AUTO_SHIP is not 'true' — every release goes through review."
+          fi
+          echo "risk=${RISK:-risky}, environment=${environment}"
+          echo "environment=$environment" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: classify
+    if: github.repository == 'sebastian-reflectmedia/open-seo'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.classify.outputs.environment }}
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -47,6 +116,34 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # An environment that does not exist yet is created on first reference
+      # with no protection rules and no secrets, so a missing `production-auto`
+      # would otherwise present as a confusing failure deep in the deploy.
+      # Check the preconditions for shipping unattended before doing anything.
+      - name: Check the unattended path is actually set up
+        env:
+          RISK: ${{ needs.classify.outputs.class }}
+          ENVIRONMENT: ${{ needs.classify.outputs.environment }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          echo "Migration risk: ${RISK} -> environment ${ENVIRONMENT}"
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::error::no CLOUDFLARE_API_TOKEN in environment '${ENVIRONMENT}'."
+            echo "Add the seven Reflect secrets to that environment (see .reflect/README.md)."
+            exit 1
+          fi
+          # Nothing else proves the Worker still serves. The anonymous check
+          # only proves Access is in front of it, so without a service token an
+          # unattended deploy could ship a broken release and pass. A reviewed
+          # deploy keeps the old warning, because a human is watching.
+          if [ "$ENVIRONMENT" = "production-auto" ] && [ -z "${CF_ACCESS_CLIENT_ID:-}" ]; then
+            echo "::error::unattended deploys require a Zero Trust service token."
+            echo "Set CF_ACCESS_CLIENT_ID/CF_ACCESS_CLIENT_SECRET, or remove the"
+            echo "'production-auto' environment to send every release back to review."
+            exit 1
+          fi
 
       - uses: pnpm/action-setup@v4
 
@@ -103,6 +200,7 @@ jobs:
 
       # db:migrate:prod && build && wrangler deploy
       - name: Deploy
+        id: deploy
         run: pnpm run deploy
 
       # The anonymous assertion is the valuable one. A deploy that quietly drops
@@ -127,6 +225,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${CF_ACCESS_CLIENT_ID:-}" ]; then
+            # Unattended deploys never reach this branch — the precondition step
+            # already failed them. A reviewed deploy may proceed on a warning.
             echo "::warning::no Zero Trust service token configured — skipping the authenticated check."
             echo "Add a Service Auth policy to the OpenSEO Access app and set CF_ACCESS_CLIENT_ID/SECRET."
             exit 0
@@ -138,17 +238,65 @@ jobs:
           echo "authenticated GET / -> $code"
           [ "$code" = "200" ] || { echo "::error::authenticated request returned $code, expected 200"; exit 1; }
 
-      - name: Rollback instructions
+      # Roll the CODE back without being asked. This is the half of recovery
+      # that is safe to automate: it swaps the Worker back to the previous
+      # version and touches no data. `--message` is what makes it
+      # non-interactive; without that flag wrangler waits for a confirmation
+      # that will never come and the step hangs until the job times out.
+      #
+      # Deliberately narrow: only when the deploy step SUCCEEDED and something
+      # after it failed. That is the one case where we know for certain the new
+      # version is live and serving, which is what makes rolling back both safe
+      # and obviously right.
+      #
+      # A failure of the deploy step itself is ambiguous — `pnpm run deploy` is
+      # `db:migrate:prod && build && wrangler deploy`, so it may have died before
+      # publishing anything. Rolling back then would revert the previous good
+      # release for no reason. Those cases print instructions and stop.
+      #
+      # The database is deliberately NOT restored here. Time Travel rewinds the
+      # whole of D1 and discards every write since the bookmark, so it destroys
+      # unrelated user data to fix a bad release. That decision needs a human
+      # who knows what has happened since; the bookmark is printed below.
+      - name: Roll the Worker back
+        id: rollback
+        if: failure() && steps.deploy.outcome == 'success'
+        run: |
+          set -euo pipefail
+          echo "A check after publish failed — the new version is live, rolling code back."
+          pnpm exec wrangler rollback \
+            --message "automatic rollback of ${GITHUB_SHA} (${GITHUB_RUN_ID})"
+          echo "Rolled back. Verifying the origin is still protected."
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$OPENSEO_URL/")
+          echo "anonymous GET / -> $code"
+          case "$code" in
+            302|303|401|403) echo "Access still protecting the origin after rollback." ;;
+            *) echo "::error::origin returned $code after rollback — check this by hand"; exit 1 ;;
+          esac
+
+      - name: What to do next
         if: failure()
         env:
           BOOKMARK: ${{ steps.restore.outputs.bookmark }}
+          RISK: ${{ needs.classify.outputs.class }}
+          ROLLED_BACK: ${{ steps.rollback.outcome }}
         run: |
-          echo "Deploy failed. Two independent rollbacks, code first:"
+          echo "Deploy failed. Code rollback: ${ROLLED_BACK:-not attempted}."
           echo ""
-          echo "  pnpm exec wrangler rollback"
-          echo ""
+          if [ "${ROLLED_BACK:-}" != "success" ]; then
+            echo "  # the Worker may still be running the bad release"
+            echo "  pnpm exec wrangler rollback --message 'manual rollback'"
+            echo ""
+          fi
+          if [ "${RISK:-}" = "risky" ]; then
+            echo "This release ran migrations that touch existing data, so the schema"
+            echo "is now ahead of the rolled-back code. Read the migration before"
+            echo "deciding whether the app is usable in that state."
+            echo ""
+          fi
           if [ -n "${BOOKMARK:-}" ]; then
-            echo "  # only if a migration corrupted data — this is destructive and an outage"
+            echo "  # LAST RESORT — rewinds ALL of D1 and drops every write since the"
+            echo "  # bookmark, including unrelated user data. This is an outage."
             echo "  pnpm exec wrangler d1 time-travel restore \"$REFLECT_D1_NAME\" --bookmark=$BOOKMARK"
           else
             echo "  # no bookmark was captured — the run failed before the restore point"

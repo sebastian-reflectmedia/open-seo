@@ -1,0 +1,170 @@
+name: Reflect — auto-ship
+
+# Merge an upstream sync PR without waiting for a human, but only one that
+# reflect-upstream-watch has cleared for it.
+#
+# The gate is the `auto-ship` label, which the watch adds only when the release
+# either runs no migrations or runs migrations that just create new tables. Both
+# cases are fully undone by `wrangler rollback`, which is the whole reason they
+# are allowed through unattended. Remove the label to take any release back
+# under review.
+#
+# This does not use GitHub's own auto-merge. That feature requires branch
+# protection or a ruleset on `main`, which this fork does not have, and enabling
+# it would also start gating Sebastian's own direct pushes. Checking the states
+# here keeps the behaviour explicit and visible in one file.
+#
+# MERGE METHOD IS LOAD-BEARING. `--merge` only. A squash drops the link between
+# main and the upstream tag, and the next release then conflicts against every
+# file the two releases share — see run 32363000155, which is why the merge
+# method is asserted below rather than left to repository defaults.
+
+on:
+  # Fires when a check suite settles, which is how we learn CI went green
+  # without polling. pull_request alone would fire before the checks exist.
+  check_suite:
+    types: [completed]
+  # Labelling a PR after CI has already finished would otherwise never retrigger.
+  pull_request_target:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to consider
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: reflect-auto-ship
+  cancel-in-progress: false
+
+jobs:
+  ship:
+    if: github.repository == 'sebastian-reflectmedia/open-seo'
+    runs-on: ubuntu-latest
+    steps:
+      # Off until switched on. Landing this workflow therefore changes nothing
+      # by itself; see the setup list in .reflect/README.md.
+      - name: Check the switch
+        id: gate
+        env:
+          ENABLED: ${{ vars.REFLECT_AUTO_SHIP }}
+          HAS_PAT: ${{ secrets.REFLECT_SYNC_TOKEN != '' }}
+        run: |
+          if [ "${ENABLED:-}" != "true" ]; then
+            echo "REFLECT_AUTO_SHIP is not 'true' — nothing ships unattended."
+            echo "on=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A PAT is required, not optional. Merging with GITHUB_TOKEN raises no
+          # events, so reflect-deploy would never start and the release would sit
+          # merged but undeployed — the worst of both worlds.
+          if [ "$HAS_PAT" != "true" ]; then
+            echo "::error::REFLECT_AUTO_SHIP is on but REFLECT_SYNC_TOKEN is not set." \
+                 "A merge by GITHUB_TOKEN would not trigger reflect-deploy."
+            exit 1
+          fi
+          echo "on=true" >> "$GITHUB_OUTPUT"
+
+      - name: Find the candidate PR
+        id: find
+        if: steps.gate.outputs.on == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.REFLECT_SYNC_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          INPUT_PR: ${{ github.event.inputs.pr }}
+          LABELED_PR: ${{ github.event.pull_request.number }}
+          SUITE_BRANCH: ${{ github.event.check_suite.head_branch }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            workflow_dispatch) pr="$INPUT_PR" ;;
+            pull_request_target) pr="$LABELED_PR" ;;
+            check_suite)
+              # Only sync branches are ever candidates.
+              case "$SUITE_BRANCH" in
+                reflect/upstream-v*) ;;
+                *) echo "Not a sync branch ($SUITE_BRANCH) — nothing to do."
+                   echo "pr=" >> "$GITHUB_OUTPUT"; exit 0 ;;
+              esac
+              pr=$(gh pr list --head "$SUITE_BRANCH" --state open \
+                     --json number --jq '.[0].number // empty')
+              ;;
+          esac
+          if [ -z "${pr:-}" ]; then
+            echo "No open PR to consider."
+            echo "pr=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Considering PR #${pr}"
+            echo "pr=$pr" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Always the base branch, never the PR head — this job holds a PAT, and
+      # the classifier it runs must be our copy rather than whatever the branch
+      # under consideration happens to contain.
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.on == 'true' && steps.find.outputs.pr != ''
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Merge it if every condition holds
+        if: steps.gate.outputs.on == 'true' && steps.find.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ secrets.REFLECT_SYNC_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ steps.find.outputs.pr }}
+        run: |
+          set -euo pipefail
+
+          view=$(gh pr view "$PR" --json \
+            number,state,isDraft,mergeable,mergeStateStatus,headRefName,author,labels,baseRefName)
+
+          check() { # description, jq filter
+            if [ "$(jq -r "$2" <<< "$view")" != "true" ]; then
+              echo "Not shipping #${PR}: $1"
+              exit 0
+            fi
+          }
+
+          check "not open"                       '.state == "OPEN"'
+          check "still a draft"                  '.isDraft == false'
+          check "not targeting main"             '.baseRefName == "main"'
+          check "not a reflect/upstream-* branch" '(.headRefName | startswith("reflect/upstream-"))'
+          check "no auto-ship label"             '([.labels[].name] | index("auto-ship")) != null'
+          check "not mergeable"                  '.mergeable == "MERGEABLE"'
+
+          # CLEAN means every required check passed and nothing is blocking.
+          # UNSTABLE would mean a failing or pending check, which is precisely
+          # what must not be shipped unattended.
+          state=$(jq -r .mergeStateStatus <<< "$view")
+          if [ "$state" != "CLEAN" ]; then
+            echo "Not shipping #${PR}: merge state is ${state}, wanted CLEAN."
+            exit 0
+          fi
+
+          # Belt and braces against the label being applied to a release that
+          # actually mutates data: re-classify from the PR's own refs rather
+          # than trusting the label alone.
+          head_ref=$(jq -r .headRefName <<< "$view")
+          git fetch --quiet origin "main:refs/autoship/base" "${head_ref}:refs/autoship/head"
+          risk=$(node scripts/reflect-classify-migrations.mjs \
+                  --base refs/autoship/base --head refs/autoship/head | jq -r .class)
+          case "$risk" in
+            none|additive) echo "Re-checked risk: ${risk}." ;;
+            *)
+              echo "::error::#${PR} is labelled auto-ship but classifies as ${risk}."
+              gh pr edit "$PR" --remove-label auto-ship || true
+              gh pr comment "$PR" --body \
+                "Removed \`auto-ship\`: re-classified as \`${risk}\` at merge time, so this needs review."
+              exit 1
+              ;;
+          esac
+
+          # --merge, never --squash. See the header.
+          gh pr merge "$PR" --merge --delete-branch
+          echo "Merged #${PR}. reflect-deploy takes it from here."
