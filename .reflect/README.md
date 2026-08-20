@@ -49,9 +49,10 @@ cannot conflict on merge; only two edits to the same path can.
 
 | Workflow                 | When                            | What                                                                                                       |
 | ------------------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `reflect-upstream-watch` | nightly 04:00 PT, or manual     | New upstream release → merge the tag to a branch, bump the lock, classify the risk, open a PR              |
+| `reflect-upstream-watch` | Mondays 04:00 PT, or manual     | New upstream release → merge the tag to a branch, bump the lock, classify the risk, open a PR              |
+| `reflect-sync-nudge`     | Mondays 09:00 PT, or manual     | Posts waiting sync PRs and their risk to the Reflect Chat space. Silent when there is nothing to do        |
 | `reflect-migration-gate` | PRs touching `drizzle/**/*.sql` | Blocks merge if a new migration DROPs a table or column, until someone adds the `migration-reviewed` label |
-| `reflect-auto-ship`      | CI settles on a sync PR         | Merges a PR labelled `auto-ship` once it is CLEAN. `--merge` only, never a squash                          |
+| `reflect-auto-ship`      | CI settles on a sync PR         | Merges a PR labelled `auto-ship` once it is CLEAN. `--merge` only, never a squash. **Off** — see below     |
 | `reflect-deploy`         | push to `main`, or manual       | Apply config, capture a D1 restore point, export, deploy, smoke test, roll the code back if a check fails  |
 
 Upstream's own `ci.yml` runs on the sync PR and gates the merge, which is why the
@@ -94,13 +95,26 @@ To stop a release that was cleared, remove its `auto-ship` label before CI
 finishes; `reflect-auto-ship` re-classifies at merge time and strips the label
 itself if the two ever disagree.
 
-### Switching it on
+### It is off, on purpose
 
-**All of this is dormant until the repository variable `REFLECT_AUTO_SHIP` is set
-to `true`.** While it is unset, the classification is computed and reported, the
-`auto-ship` label is never applied, and every release routes to `production` with
-a required reviewer — exactly the behaviour that existed before. Landing the code
-changes nothing on its own.
+`REFLECT_AUTO_SHIP` is unset and the `production-auto` environment has been
+deleted. Every release routes to `production` and waits for a reviewer. The
+classification still runs — it drives the `destructive-migration` label and the
+risk line in the PR body — but nothing acts on it automatically.
+
+That was a deliberate call on 2026-08-20, not an unfinished rollout. The reasoning:
+auto-shipping only helps at per-release granularity, and reviewing weekly means a
+typical PR carries ~1.7 releases, so if any one of them has a risky migration the
+whole batch needs a human anyway. At a 50% per-release risky rate that is about
+two weeks in three. The unattended path would have fired roughly monthly, in
+exchange for a workflow that can itself break — and a broken control plane is what
+cost a morning on the day this was written. Staleness costs nothing here: this is
+an internal tool behind Access, so being a few days behind upstream is free.
+
+**Do not turn it on without redoing the setup below.** With `production-auto`
+deleted, GitHub recreates it on first reference with no reviewers and no secrets,
+so a cleared release would fail its preflight check rather than deploy. That
+failure is the safety net working, not a bug.
 
 Before setting the variable:
 
@@ -115,7 +129,8 @@ Before setting the variable:
    proves Access is in front of the Worker; the authenticated one is the only check
    that proves the app still serves, and without it an auto-deploy could ship a
    broken release and report success.
-3. **Create the `auto-ship` label.**
+3. The **`auto-ship` label** already exists; nothing applies it while the
+   variable is unset.
 
 Worth doing regardless: **turn off squash and rebase merging** on the fork, leaving
 only merge commits. A squash-merged sync PR drops the ancestry link to the upstream
@@ -158,6 +173,20 @@ for the authenticated smoke test.
 
 `reflect-upstream-watch` needs `REFLECT_SYNC_TOKEN`, a fine-grained PAT scoped to
 this fork with contents and pull-requests write.
+
+`reflect-sync-nudge` needs `CHAT_WEBHOOK_URL` — the **same** Google Chat incoming
+webhook the dashboard ETL posts through, so alerts land in one space and there is
+one credential to rotate. It lives in Secret Manager as `chat-webhook-url` and
+points at space `AAQAVsr-kPw`. Copy it without it touching a clipboard:
+
+```bash
+gcloud secrets versions access latest --secret=chat-webhook-url \
+  --account admin@reflectmedia.ca --project reflect-ai-workspace \
+  | gh secret set CHAT_WEBHOOK_URL --repo sebastian-reflectmedia/open-seo
+```
+
+Treat that URL as a credential: its `key` and `token` query parameters are the
+whole authentication, so never echo it or a Chat error body into a log.
 
 The Cloudflare token needs **D1 Edit**. The dashboard's "Edit Cloudflare Workers"
 template does not include it, and a token without it fails about 30 seconds in

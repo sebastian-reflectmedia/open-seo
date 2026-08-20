@@ -1,0 +1,161 @@
+name: Reflect — weekly sync nudge
+
+# Monday morning digest in the Reflect Google Chat space: which upstream sync
+# PRs are waiting, how risky each one is, and whether the watch itself is still
+# working.
+#
+# Posts through the same incoming webhook the dashboard ETL uses (Secret Manager
+# `chat-webhook-url`, space AAQAVsr-kPw), so there is one place alerts arrive and
+# one credential to rotate. Payload is Chat's plain `{"text": ...}`.
+#
+# It stays QUIET when there is nothing to do, which is the convention the ETL
+# alerter already sets — a message every Monday saying "nothing to review" gets
+# filtered out mentally within a month, and then the one that matters gets
+# filtered with it. To make it post unconditionally, drop the `should_post`
+# guard on the final step.
+#
+# The liveness check earns its place: the v0.1.6 sync failed at 04:00 and the
+# only signal was a GitHub notification email. A failed or stale watch is
+# exactly the thing you would otherwise not notice.
+
+on:
+  schedule:
+    # 16:00 UTC Monday — 09:00 PDT in summer, 08:00 PST in winter. GitHub cron
+    # has no timezone, so the hour drifts by one with DST rather than the day.
+    - cron: "0 16 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: reflect-sync-nudge
+  cancel-in-progress: false
+
+jobs:
+  nudge:
+    if: github.repository == 'sebastian-reflectmedia/open-seo'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build the digest
+        id: digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          STALE_AFTER_DAYS: "8"
+        run: |
+          set -euo pipefail
+          : > /tmp/msg.txt
+          should_post=false
+
+          # ---- open sync PRs -------------------------------------------------
+          prs=$(gh pr list --state open --json number,title,url,headRefName,mergeStateStatus,labels \
+                  --jq '[.[] | select(.headRefName | startswith("reflect/upstream-"))]')
+          count=$(jq 'length' <<< "$prs")
+
+          if [ "$count" -gt 0 ]; then
+            should_post=true
+            printf '🔄 OPENSEO — %s upstream sync PR(s) waiting\n' "$count" >> /tmp/msg.txt
+            for i in $(seq 0 $((count - 1))); do
+              row=$(jq -c ".[$i]" <<< "$prs")
+              num=$(jq -r .number <<< "$row")
+              url=$(jq -r .url <<< "$row")
+              title=$(jq -r .title <<< "$row")
+              state=$(jq -r .mergeStateStatus <<< "$row")
+              branch=$(jq -r .headRefName <<< "$row")
+              labels=$(jq -r '[.labels[].name] | join(", ") | if . == "" then "none" else . end' <<< "$row")
+
+              # Classify from the branch itself rather than trusting the label.
+              risk=unknown
+              if git fetch --quiet origin "${branch}:refs/nudge/head" 2>/dev/null; then
+                risk=$(node scripts/reflect-classify-migrations.mjs \
+                         --base origin/main --head refs/nudge/head 2>/dev/null \
+                         | jq -r '.class // "unknown"')
+                git update-ref -d refs/nudge/head || true
+              fi
+
+              case "$state" in
+                CLEAN)    checks="checks green, ready to merge" ;;
+                UNSTABLE) checks="a check is failing or still running" ;;
+                BLOCKED)  checks="blocked — needs the migration-reviewed label or an approval" ;;
+                DIRTY)    checks="CONFLICTED — needs resolving by hand" ;;
+                *)        checks="merge state ${state}" ;;
+              esac
+
+              {
+                printf '\n#%s %s\n' "$num" "$title"
+                printf 'Migrations: %s. %s\n' "$risk" "$checks"
+                printf 'Labels: %s\n' "$labels"
+                printf '%s\n' "$url"
+              } >> /tmp/msg.txt
+            done
+
+            if [ "$count" -gt 1 ]; then
+              printf '\nMore than one is open, so the older ones are superseded — merge the newest and close the rest.\n' \
+                >> /tmp/msg.txt
+            fi
+          fi
+
+          # ---- is the watch still alive? -------------------------------------
+          watch=$(gh run list --workflow=reflect-upstream-watch.yml --limit 1 \
+                    --json conclusion,createdAt,url --jq '.[0] // empty')
+          if [ -z "$watch" ]; then
+            should_post=true
+            printf '\n⚠️ No reflect-upstream-watch run found at all.\n' >> /tmp/msg.txt
+          else
+            concl=$(jq -r .conclusion <<< "$watch")
+            when=$(jq -r .createdAt <<< "$watch")
+            wurl=$(jq -r .url <<< "$watch")
+            age_days=$(( ( $(date -u +%s) - $(date -u -d "$when" +%s) ) / 86400 ))
+            if [ "$concl" != "success" ]; then
+              should_post=true
+              printf '\n⚠️ Last upstream watch did not succeed (%s, %s days ago)\n%s\n' \
+                "$concl" "$age_days" "$wurl" >> /tmp/msg.txt
+            elif [ "$age_days" -gt "$STALE_AFTER_DAYS" ]; then
+              should_post=true
+              printf '\n⚠️ Upstream watch has not run for %s days — the schedule may be disabled.\n%s\n' \
+                "$age_days" "$wurl" >> /tmp/msg.txt
+            fi
+          fi
+
+          echo "should_post=$should_post" >> "$GITHUB_OUTPUT"
+          echo "--- message ---"
+          cat /tmp/msg.txt || true
+
+      - name: Post to Google Chat
+        if: steps.digest.outputs.should_post == 'true'
+        env:
+          CHAT_WEBHOOK_URL: ${{ secrets.CHAT_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CHAT_WEBHOOK_URL:-}" ]; then
+            echo "::error::CHAT_WEBHOOK_URL is not set — nothing was posted."
+            echo "Copy it from Secret Manager without it touching a clipboard:"
+            echo "  gcloud secrets versions access latest --secret=chat-webhook-url \\"
+            echo "    --account admin@reflectmedia.ca --project reflect-ai-workspace \\"
+            echo "    | gh secret set CHAT_WEBHOOK_URL --repo ${GITHUB_REPOSITORY}"
+            exit 1
+          fi
+          # jq -Rs builds the JSON string, so newlines and any quotes or
+          # backticks in an upstream PR title cannot break out of the payload.
+          jq -Rs '{text: .}' < /tmp/msg.txt > /tmp/payload.json
+          code=$(curl -sS -o /tmp/chat-response.txt -w '%{http_code}' --max-time 30 \
+            -X POST -H 'Content-Type: application/json' \
+            --data @/tmp/payload.json "$CHAT_WEBHOOK_URL")
+          echo "Chat responded $code"
+          if [ "$code" != "200" ]; then
+            # The response body echoes the request URL on some errors, so print
+            # only the status rather than leaking the webhook's key and token.
+            echo "::error::Chat webhook returned $code"
+            exit 1
+          fi
+
+      - name: Nothing to report
+        if: steps.digest.outputs.should_post != 'true'
+        run: echo "No open sync PRs and the watch is healthy — staying quiet."
