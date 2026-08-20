@@ -159,7 +159,10 @@ function actionUrl(
         "ga4_property_inaccessible",
       ].includes(code)
     ) {
-      return buildDashboardUrl(baseUrl, `/p/${projectId}/settings`);
+      return buildDashboardUrl(
+        baseUrl,
+        `/p/${projectId}/settings/integrations`,
+      );
     }
     return undefined;
   }

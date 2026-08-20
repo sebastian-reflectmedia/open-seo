@@ -21,6 +21,8 @@ const SKILL_NAMES = [
   "competitive-landscape",
   "competitor-analysis",
   "link-prospecting",
+  "local-seo",
+  "seo-audit",
 ];
 const SKILLS_INSTALL = `npx skills add every-app/open-seo`;
 const ALL_SKILLS_INSTALL = `npx skills add every-app/open-seo --skill '*'`;
@@ -269,8 +271,8 @@ function AiPage() {
               <span className="font-mono text-base-content">
                 /seo-project-setup
               </span>
-              . It will ask about your project and help configure your
-              workspace.
+              . It will ask about your project and save your goals, positioning,
+              and competitors to your project context.
             </p>
             <p className="mt-4 text-xs font-medium uppercase tracking-wide text-base-content/50">
               Available skills

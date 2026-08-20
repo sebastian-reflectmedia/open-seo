@@ -153,6 +153,9 @@ importers:
       tldts:
         specifier: ^7.0.25
         version: 7.0.25
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
       zod:
         specifier: ^4.1.12
         version: 4.3.6

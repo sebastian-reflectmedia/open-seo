@@ -3,7 +3,7 @@ title: "Set up OpenSEO MCP"
 description: "Connect OpenSEO MCP to Claude, Codex, and other AI clients."
 ---
 
-OpenSEO MCP lets compatible AI clients call OpenSEO tools for keyword research, SERP inspection, local business research, competitive search intelligence, domain research, backlink overview, saved keywords, rank tracking, and Google Search Console performance and URL inspection.
+OpenSEO MCP lets compatible AI clients call OpenSEO tools for keyword research, SERP inspection, local business research, competitive search intelligence, domain research, backlink overview, saved keywords, rank tracking, shared project context, and Google Search Console performance and URL inspection.
 
 The hosted MCP server URL is:
 
@@ -16,6 +16,8 @@ The first connection sends you through OpenSEO login. After authorization, your 
 For the most current setup UI and a copyable endpoint, open [AI & MCP in OpenSEO](https://app.openseo.so/ai).
 
 ## Claude Code
+
+The [OpenSEO plugin](/docs/claude-code-plugin) is the preferred way to connect Claude Code — one install adds MCP and all nine Agent Skills together. Use the steps below only if you want MCP on its own.
 
 Use user scope to make OpenSEO available across projects. Use local scope for the current repository.
 
@@ -53,6 +55,8 @@ Claude Desktop custom connectors require a Claude plan that supports custom conn
 4. Approve the OpenSEO login when prompted.
 
 ## Codex CLI
+
+The [OpenSEO plugin](/docs/codex-plugin) is the preferred way to connect Codex CLI — one install adds MCP and all nine Agent Skills together. Use the steps below only if you want MCP on its own.
 
 Run this in your terminal:
 
@@ -128,6 +132,7 @@ OpenSEO MCP exposes tools for SEO research workflows:
 - Check backlink and referring-domain overview data.
 - Read first-party Google Search Console performance (clicks, impressions, CTR, position).
 - Inspect index status, crawl, and canonical for specific URLs (up to 10 per call).
+- Read and update a project's shared context: business, goal, positioning, writing preferences, competitors, key pages, and a research log (free, no credits).
 
 ## What to do after setup
 
@@ -135,7 +140,7 @@ Once OpenSEO MCP is connected, [set up OpenSEO Agent Skills](/docs/skills/setup)
 
 Start with one focused workflow instead of asking your agent to "do SEO" broadly.
 
-- Use [SEO project setup](/docs/skills/seo-project-setup) to capture your SEO goals and website context in a local workspace.
+- Use [SEO project setup](/docs/skills/seo-project-setup) to save your goals, positioning, competitors, and key pages to your project context, so every other skill reuses them.
 - Use [SEO coach](/docs/skills/seo-coach) if you are new to SEO or are not sure which workflow to run first.
 - Use [keyword research](/docs/skills/keyword-research) to discover keyword opportunities.
 - Use [competitive landscape](/docs/skills/competitive-landscape) to map a market before choosing competitors or pages.

@@ -87,10 +87,10 @@ export function GscReEngagementModal({
     // screen, and on return they'll either have a grant (which suppresses this
     // anyway) or have abandoned it — neither case should re-nag.
     persistDismiss();
-    // Land them on the project's settings page so they can pick a property
+    // Land them on the project's integrations page so they can pick a property
     // right after granting access (the grant alone has no property bound yet).
     const callbackURL = projectId
-      ? `${window.location.origin}/p/${projectId}/settings#search-console`
+      ? `${window.location.origin}/p/${projectId}/settings/integrations`
       : window.location.href;
     void startGoogleLink("gsc", callbackURL);
   }

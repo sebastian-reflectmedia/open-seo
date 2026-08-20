@@ -4,6 +4,7 @@ import type {
   ChatResponseResult,
   Session,
   StepContext,
+  ToolCallResultContext,
   TurnConfig,
   TurnContext,
 } from "@cloudflare/think";
@@ -18,9 +19,10 @@ import {
   staticAssistantModel,
 } from "@/server/lib/chatAgent";
 import { SamSessionRepository } from "@/server/features/sam/SamSessionRepository";
-import { SamProjectMemoryRepository } from "@/server/features/sam/SamProjectMemoryRepository";
+import { ProjectContextService } from "@/server/features/project-context/services/ProjectContextService";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import { buildSamMcpTools } from "@/server/features/sam/samChatTools";
+import { buildSamSkillSource } from "@/server/features/sam/samSkills";
 import { buildSamSystemPrompt } from "@/server/features/sam/samSystemPrompt";
 import { buildChatAgentModel } from "@/server/lib/openrouter";
 import {
@@ -31,14 +33,15 @@ import {
   checkUsageCreditsDepleted,
   trackUsageCreditSpend,
 } from "@/server/billing/subscription";
+import { captureServerEvent } from "@/server/lib/posthog";
 import { getPublicOrigin } from "@/server/mcp/public-origin";
 import { MCP_SCOPE } from "@/lib/oauth-resource";
 import type { ToolAuthContext } from "@/server/mcp/context";
 
-// SAM's writable context blocks, backed by sam_project_memory rows shared by
-// every chat session in the project.
-const MEMORY_BLOCK = "memory";
-const RESEARCH_LOG_BLOCK = "research_log";
+// SAM's read-only view of the project's shared memory. The block has no `set`
+// provider, so Think exposes no set_context tool for it; writes go through the
+// update_project_context tool, the same one MCP clients and the settings UI use.
+const PROJECT_CONTEXT_BLOCK = "project_context";
 
 const PUBLIC_ORIGIN_KEY = "sam-public-origin";
 
@@ -77,9 +80,10 @@ type SamContext = {
  *
  * Think owns the agentic loop (streaming, persistence, compaction-ready
  * history, context blocks); this subclass contributes the model, the MCP
- * toolset, the billing gate/metering, and project-scoped memory: the "memory"
- * and "research_log" context blocks are backed by sam_project_memory rows in
- * the app DB, so every session in a project shares them.
+ * toolset, the billing gate/metering, and project-scoped memory: the
+ * "project_context" block renders the project's shared memory, which every
+ * session in the project — and the MCP server and settings UI — reads and
+ * writes through ProjectContextService.
  */
 export class SamChatAgent extends Think {
   // SAM's toolset is the MCP tools from beforeTurn; it has no use for Think's
@@ -132,22 +136,51 @@ export class SamChatAgent extends Think {
     );
   }
 
+  override getSkills() {
+    return [buildSamSkillSource()];
+  }
+
+  // Skill activations are Think-internal tools (activate_skill), so they never
+  // pass through the MCP instrumentation that reports every other SAM tool
+  // call; mirror its event shape so both land in the same dashboards.
+  override afterToolCall(ctx: ToolCallResultContext) {
+    if (ctx.toolName !== "activate_skill" || !this.samContext) return;
+    const input: unknown = ctx.input;
+    const skill =
+      typeof input === "object" &&
+      input !== null &&
+      "name" in input &&
+      typeof input.name === "string"
+        ? input.name
+        : undefined;
+    // ctx.waitUntil, not a bare void: the PostHog client flushes on shutdown,
+    // and a fire-and-forget promise on a turn's last step can be cancelled
+    // before that flush happens.
+    this.ctx.waitUntil(
+      captureServerEvent({
+        distinctId: this.samContext.row.userId,
+        event: "sam:skill_activated",
+        organizationId: this.samContext.project.organizationId,
+        properties: {
+          skill,
+          success: ctx.success,
+          duration_ms: ctx.durationMs,
+          project_id: this.samContext.project.id,
+          source: "in_app_agent",
+        },
+      }),
+    );
+  }
+
   configureSession(session: Session): Session {
     return session
       .withContext("soul", {
         provider: { get: () => this.buildSoulPrompt() },
       })
-      .withContext(MEMORY_BLOCK, {
+      .withContext(PROJECT_CONTEXT_BLOCK, {
         description:
-          "Durable facts about this project: business, positioning, goals, target market, competitors, settled strategy decisions. Rewrite to fold in anything that should survive this chat.",
-        maxTokens: 2000,
-        provider: this.projectBlockProvider(MEMORY_BLOCK),
-      })
-      .withContext(RESEARCH_LOG_BLOCK, {
-        description:
-          'Dated one-line log of completed research, newest first: "YYYY-MM-DD — <what>: <inputs>. Verdict: <conclusion>". Append when you finish a research arc.',
-        maxTokens: 2000,
-        provider: this.projectBlockProvider(RESEARCH_LOG_BLOCK),
+          "This project's shared memory — sections, competitors, key pages and research log, the same records the user sees in the app. Change it with update_project_context.",
+        provider: { get: () => this.renderProjectContext() },
       });
   }
 
@@ -167,8 +200,8 @@ export class SamChatAgent extends Think {
     return this.samContext;
   }
 
-  // The read-only identity block. Runs through the context-block pipeline like
-  // the writable blocks, so it re-renders (fresh project row, intake mode
+  // The identity block. Runs through the context-block pipeline like the
+  // project-memory block, so it re-renders (fresh project row, intake mode
   // on/off) whenever the prompt is refreshed.
   private buildSoulPrompt(): Promise<string> {
     return withPgClient(async () => {
@@ -176,9 +209,8 @@ export class SamChatAgent extends Think {
       if (!ctx) {
         return "You are SAM, the SEO agent inside OpenSEO. This chat session no longer exists; tell the user to start a new chat.";
       }
-      const memory = await SamProjectMemoryRepository.getBlock(
+      const context = await ProjectContextService.getProjectContext(
         ctx.project.id,
-        MEMORY_BLOCK,
       );
       return buildSamSystemPrompt(
         {
@@ -188,33 +220,23 @@ export class SamChatAgent extends Think {
           locationCode: ctx.project.locationCode,
           languageCode: ctx.project.languageCode,
         },
-        { memoryIsEmpty: !memory?.trim() },
+        // Nothing recorded about the business yet: SAM runs its intake flow.
+        { intakeMode: context.missingSections.includes("business_overview") },
       );
     });
   }
 
-  // Bridge a context block to its sam_project_memory row. Each get/set scopes
-  // its own Postgres client: providers are invoked from Think's internals, so
-  // no ambient withPgClient scope can be assumed (no-op in D1 mode).
-  private projectBlockProvider(label: string) {
-    return {
-      get: (): Promise<string | null> =>
-        withPgClient(async () => {
-          const ctx = await this.loadSamContext();
-          if (!ctx) return null;
-          return SamProjectMemoryRepository.getBlock(ctx.project.id, label);
-        }),
-      set: (content: string): Promise<void> =>
-        withPgClient(async () => {
-          const ctx = await this.loadSamContext();
-          if (!ctx) return;
-          await SamProjectMemoryRepository.setBlock(
-            ctx.project.id,
-            label,
-            content,
-          );
-        }),
-    };
+  // The project-memory block. Scopes its own Postgres client: providers are
+  // invoked from Think's internals, so no ambient withPgClient scope can be
+  // assumed (no-op in D1 mode).
+  private renderProjectContext(): Promise<string | null> {
+    return withPgClient(async () => {
+      const ctx = await this.loadSamContext();
+      if (!ctx) return null;
+      return ProjectContextService.renderProjectContextMarkdown(
+        await ProjectContextService.getProjectContext(ctx.project.id),
+      );
+    });
   }
 
   // Gates swap the model for one turn: the canned model streams the refusal
@@ -324,10 +346,10 @@ export class SamChatAgent extends Think {
       }
     });
 
-    // Re-pull the shared blocks so memory written by ANOTHER session's DO
-    // lands here by the next turn (this DO's own set_context writes are
-    // already live). One withPgClient scope covers all three providers (their
-    // own defensive scopes reuse it). Best-effort — never fail the response.
+    // Re-render the blocks so context written during this turn — or by another
+    // session, the settings UI, or an MCP client — is in the prompt by the next
+    // turn. One withPgClient scope covers both providers (their own defensive
+    // scopes reuse it). Best-effort — never fail the response.
     if (result.status === "completed") {
       await withPgClient(() => this.session.refreshSystemPrompt()).catch(
         (error: unknown) => {
