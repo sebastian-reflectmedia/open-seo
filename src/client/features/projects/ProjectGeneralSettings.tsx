@@ -1,10 +1,7 @@
 import * as React from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
-import { SearchConsoleConnectionCard } from "@/client/features/gsc/SearchConsoleConnectionCard";
-import { GoogleAnalyticsConnectionCard } from "@/client/features/ga4/GoogleAnalyticsConnectionCard";
 import { ProjectMarketFields } from "@/client/features/projects/ProjectMarketFields";
 import { getStandardErrorMessage } from "@/client/lib/error-messages";
 import {
@@ -18,7 +15,7 @@ import {
 } from "@/serverFunctions/projects";
 import type { ProjectSummary } from "./types";
 
-export function ProjectSettings({ projectId }: { projectId: string }) {
+export function ProjectGeneralSettings({ projectId }: { projectId: string }) {
   const projectsQuery = useQuery({
     queryKey: ["projects"],
     queryFn: () => getProjects(),
@@ -28,51 +25,16 @@ export function ProjectSettings({ projectId }: { projectId: string }) {
 
   if (!project) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex justify-center py-10">
         <span className="loading loading-spinner loading-md" />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-8 p-4 py-8 sm:p-6 md:py-12">
-      <div className="space-y-4">
-        <Link
-          to="/projects"
-          className="inline-flex items-center gap-1 text-sm text-base-content/60 transition-colors hover:text-base-content"
-        >
-          <ChevronLeft className="size-4" />
-          Projects
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Project settings
-          </h1>
-          <p className="text-sm text-base-content/60">{project.name}</p>
-        </div>
-      </div>
-
+    <div className="space-y-8">
       {/* key resets the form's local state when switching between projects */}
       <GeneralSection key={project.id} project={project} />
-
-      <section id="search-console" className="space-y-3 scroll-mt-6">
-        <h2 className="text-sm font-medium text-base-content/50">
-          Search Console
-        </h2>
-        <SearchConsoleConnectionCard projectId={projectId} />
-      </section>
-
-      <section id="google-analytics" className="space-y-3 scroll-mt-6">
-        <GoogleAnalyticsConnectionCard
-          projectId={projectId}
-          heading={
-            <h2 className="text-sm font-medium text-base-content/50">
-              Analytics
-            </h2>
-          }
-        />
-      </section>
-
       <DangerSection project={project} canArchive={projects.length > 1} />
     </div>
   );

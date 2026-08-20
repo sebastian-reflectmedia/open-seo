@@ -123,6 +123,50 @@ describe("Ga4OrganicOverviewService", () => {
     expect(mocks.runReport).toHaveBeenCalledTimes(3);
   });
 
+  it("treats a headerless previous-period response as empty instead of malformed", async () => {
+    mocks.runReport
+      .mockResolvedValueOnce({
+        dimensionHeaders: [],
+        metricHeaders,
+        rows: [
+          {
+            dimensionValues: [],
+            metricValues: metricValues([
+              "100",
+              "80",
+              "70",
+              "0.7",
+              "10",
+              "4",
+              "500",
+            ]),
+          },
+        ],
+        rowCount: 1,
+      })
+      // GA4 omits headers and rows entirely when the previous-period window
+      // falls before the property's creation date.
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({
+        dimensionHeaders: [{ name: "date" }],
+        metricHeaders,
+        rows: [],
+        rowCount: 0,
+      });
+    const result = await Ga4OrganicOverviewService.getOrganicOverview(
+      { projectId: "project_1", trend: "daily" },
+      { now: new Date("2026-08-06T15:00:00Z") },
+    );
+    expect(result.previous).toBeNull();
+    expect(result.comparison.sessions).toEqual({
+      current: 100,
+      previous: null,
+      absoluteChange: null,
+      percentChange: null,
+    });
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags a material key-event decline with explicit evidence", async () => {
     const report = (keyEvents: string) => ({
       dimensionHeaders: [],

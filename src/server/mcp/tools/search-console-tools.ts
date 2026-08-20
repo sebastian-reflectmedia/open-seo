@@ -229,7 +229,7 @@ export const getSearchConsolePerformanceTool = {
     const meta = buildProjectMeta(
       context,
       args.projectId,
-      `/p/${args.projectId}/settings`,
+      `/p/${args.projectId}/settings/integrations`,
     );
 
     // GSC rejects searchAppearance combined with any other dimension.
@@ -365,7 +365,7 @@ export const inspectUrlsTool = {
     const meta = buildProjectMeta(
       context,
       args.projectId,
-      `/p/${args.projectId}/settings`,
+      `/p/${args.projectId}/settings/integrations`,
     );
 
     try {

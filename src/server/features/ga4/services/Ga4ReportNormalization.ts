@@ -50,9 +50,21 @@ export function normalizeGa4Response(
   const expectedMetrics = request.metrics.map(({ name }) => name);
   const dimensions = (response.dimensionHeaders ?? []).map(({ name }) => name);
   const metrics = (response.metricHeaders ?? []).map(({ name }) => name);
+
+  // GA4 omits headers and rows entirely (rather than echoing the requested
+  // headers with zero rows) when the date range has no data on record for
+  // the property at all — e.g. a previous-period comparison window that
+  // falls before the property's creation date. Treat that as a
+  // legitimately empty report instead of a malformed response.
+  const isHeaderlessEmptyResponse =
+    response.dimensionHeaders === undefined &&
+    response.metricHeaders === undefined &&
+    (response.rows?.length ?? 0) === 0;
+
   if (
-    dimensions.join("\0") !== expectedDimensions.join("\0") ||
-    metrics.join("\0") !== expectedMetrics.join("\0")
+    !isHeaderlessEmptyResponse &&
+    (dimensions.join("\0") !== expectedDimensions.join("\0") ||
+      metrics.join("\0") !== expectedMetrics.join("\0"))
   ) {
     throw new Ga4MalformedResponseError();
   }

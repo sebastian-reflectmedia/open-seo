@@ -57,7 +57,7 @@ const runInputSchema = {
     .boolean()
     .optional()
     .describe(
-      "Run Lighthouse on a sample of up to 10 representative pages (default true).",
+      "Run Lighthouse on a sample of up to 10 representative pages (default false — it adds several minutes of wall-clock time). Pass true only when the user wants performance/Core Web Vitals detail.",
     ),
 } as const;
 
@@ -83,7 +83,10 @@ export const runSiteAuditTool = {
     },
   },
   handler: withMcpProjectAuth(async (args: RunArgs, context) => {
-    const lighthouseStrategy = (args.runLighthouse ?? true) ? "auto" : "none";
+    // Default OFF for agent calls: Lighthouse turns a 1-2 minute crawl into a
+    // many-minute wait, which chat agents handle badly. The app UI passes its
+    // own explicit lighthouseStrategy, so this default only governs agents.
+    const lighthouseStrategy = (args.runLighthouse ?? false) ? "auto" : "none";
     const limitTier = await AuditService.resolveAuditLimitTier(
       context.auth.organizationId,
     );

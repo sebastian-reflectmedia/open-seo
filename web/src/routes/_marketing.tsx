@@ -52,7 +52,6 @@ function getMobileNavItems(githubStarCount: string) {
       label: "Product",
       links: [
         { label: "Features", href: "/features" },
-        { label: "Roadmap", href: "/roadmap" },
         { label: "Pricing", href: "/pricing" },
       ],
     },
@@ -158,7 +157,7 @@ function MarketingLayout() {
   }, [isHome]);
 
   return (
-    <main className="min-h-screen bg-[var(--color-surface)] text-[var(--color-brand)]">
+    <main className="fd-light min-h-screen bg-[var(--color-surface)] text-[var(--color-brand)]">
       <div className="relative z-50 mx-auto w-full max-w-6xl px-4 pt-6 sm:px-6 md:pt-8">
         <div className="relative mx-auto max-w-5xl">
           <nav className="grid min-h-14 grid-cols-[1fr_auto] items-center gap-3 rounded-full border border-[var(--color-border-subtle)] bg-white/90 px-4 py-2.5 shadow-sm shadow-neutral-900/5 backdrop-blur md:grid-cols-[1fr_auto_1fr] md:px-5">
@@ -172,12 +171,6 @@ function MarketingLayout() {
             <div className="hidden items-center justify-center gap-5 md:flex">
               <FeatureDropdown />
               <ResourcesDropdown />
-              <Link
-                to="/roadmap"
-                className="text-sm font-semibold text-neutral-600 transition-colors hover:text-neutral-900"
-              >
-                Roadmap
-              </Link>
               <Link
                 to="/pricing"
                 className="text-sm font-semibold text-neutral-600 transition-colors hover:text-neutral-900"

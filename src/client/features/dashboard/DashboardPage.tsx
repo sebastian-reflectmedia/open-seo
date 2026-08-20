@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { captureClientEvent } from "@/client/lib/posthog";
-import { Ga4ConnectCard } from "@/client/features/dashboard/Ga4ConnectCard";
 import {
   computeNextStep,
   isStepDone,
@@ -15,6 +14,7 @@ import {
   BacklinkPulseCard,
   GscCard,
 } from "@/client/features/dashboard/DashboardCards";
+import { Ga4Card } from "@/client/features/dashboard/Ga4Card";
 import { McpConnectCard } from "@/client/features/dashboard/McpConnectCard";
 import { WorkspaceMergeBanner } from "@/client/features/dashboard/WorkspaceMergeBanner";
 import { getStandardErrorMessage } from "@/client/lib/error-messages";
@@ -26,8 +26,6 @@ import {
   refreshDashboardBacklinkSnapshot,
 } from "@/serverFunctions/dashboard";
 import { setProjectDomain } from "@/serverFunctions/projects";
-import { useSession } from "@/lib/auth-client";
-import { isGa4ConnectAvailable } from "@/shared/ga4";
 import type { DashboardHeroStep } from "@/types/schemas/dashboard";
 
 const HERO_COPY: Record<
@@ -236,7 +234,6 @@ function OnboardingChecklist({
 
 export function DashboardPage({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
-  const { data: session } = useSession();
 
   const activationQuery = useQuery({
     queryKey: ["dashboardActivation", projectId],
@@ -338,17 +335,13 @@ export function DashboardPage({ projectId }: { projectId: string }) {
               hasData: gscConnected,
               node: <GscCard projectId={projectId} connected={gscConnected} />,
             },
-            ...(isGa4ConnectAvailable(session?.user?.email) &&
-            (ga4Connected || !activation.ga4.cardDismissedAt)
+            ...(ga4Connected || !activation.ga4.cardDismissedAt
               ? [
                   {
                     key: "ga4",
                     hasData: ga4Connected,
                     node: (
-                      <Ga4ConnectCard
-                        projectId={projectId}
-                        connected={ga4Connected}
-                      />
+                      <Ga4Card projectId={projectId} connected={ga4Connected} />
                     ),
                   },
                 ]

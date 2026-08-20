@@ -36,6 +36,10 @@ import {
 } from "@/server/mcp/tools/google-analytics-tools";
 import { createProjectTool } from "@/server/mcp/tools/create-project";
 import { listProjectsTool } from "@/server/mcp/tools/list-projects";
+import {
+  getProjectContextTool,
+  updateProjectContextTool,
+} from "@/server/mcp/tools/project-context";
 import { listSavedKeywordsTool } from "@/server/mcp/tools/list-saved-keywords";
 import {
   findSerpCompetitorsTool,
@@ -58,7 +62,6 @@ import {
   getSearchConsolePerformanceTool,
   inspectUrlsTool,
 } from "@/server/mcp/tools/search-console-tools";
-import { GA4_OAUTH_APP_PENDING } from "@/shared/ga4";
 import {
   getAuditIssuesTool,
   getAuditPagesTool,
@@ -152,6 +155,8 @@ export function createOpenSeoMcpServer(authProps: McpProps) {
   register(whoamiTool);
   register(listProjectsTool);
   register(createProjectTool);
+  register(getProjectContextTool);
+  register(updateProjectContextTool);
   register(listSavedKeywordsTool);
   register(researchKeywordsTool);
   register(saveKeywordsTool);
@@ -179,18 +184,16 @@ export function createOpenSeoMcpServer(authProps: McpProps) {
   register(getKeywordMetricsTool);
   register(getSearchConsolePerformanceTool);
   register(inspectUrlsTool);
-  if (!GA4_OAUTH_APP_PENDING) {
-    register(getGoogleAnalyticsOrganicLandingPagesTool);
-    register(getGoogleAnalyticsPagePerformanceTool);
-    register(getGoogleAnalyticsKeyEventsTool);
-    register(getSearchOpportunitiesTool);
-    register(getGoogleAnalyticsOrganicOverviewTool);
-    register(getGoogleAnalyticsTrafficAcquisitionTool);
-    register(getGoogleAnalyticsMeasurementHealthTool);
-    register(getGoogleAnalyticsEcommercePerformanceTool);
-    register(getGoogleAnalyticsSiteSearchTool);
-    register(getGoogleAnalyticsAudienceBreakdownTool);
-  }
+  register(getGoogleAnalyticsOrganicLandingPagesTool);
+  register(getGoogleAnalyticsPagePerformanceTool);
+  register(getGoogleAnalyticsKeyEventsTool);
+  register(getSearchOpportunitiesTool);
+  register(getGoogleAnalyticsOrganicOverviewTool);
+  register(getGoogleAnalyticsTrafficAcquisitionTool);
+  register(getGoogleAnalyticsMeasurementHealthTool);
+  register(getGoogleAnalyticsEcommercePerformanceTool);
+  register(getGoogleAnalyticsSiteSearchTool);
+  register(getGoogleAnalyticsAudienceBreakdownTool);
   register(runSiteAuditTool);
   register(getAuditStatusTool);
   register(getAuditIssuesTool);
