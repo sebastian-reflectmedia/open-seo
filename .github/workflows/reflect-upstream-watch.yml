@@ -141,6 +141,7 @@ jobs:
         if: steps.rel.outputs.up_to_date == 'false'
         id: branch
         env:
+          CUR_TAG: ${{ steps.rel.outputs.current }}
           NEW_TAG: ${{ steps.rel.outputs.latest }}
         run: |
           set -euo pipefail
@@ -149,9 +150,27 @@ jobs:
           git config user.email "sebastian@reflectmedia.ca"
           git checkout -b "$branch"
 
-          # New paths only (.reflect/, .github/workflows/reflect-*.yml) and
-          # wrangler.jsonc is never edited in git, so this merge cannot conflict.
-          # If it ever does, stop — do not auto-resolve someone else's release.
+          # The merge below is only conflict-free while the tag we are already
+          # on is genuinely in main's history. Squash-merging one of these PRs
+          # breaks that: the release's content lands as a single commit with no
+          # link to the tag, so the NEXT merge replays everything since the last
+          # tag that IS an ancestor and collides on every file both releases
+          # touched. That is exactly what happened to v0.1.6 (run 32363000155).
+          #
+          # Record the missing ancestry with a tree-preserving merge before
+          # doing the real one. `-s ours` keeps our tree byte for byte and only
+          # adds the parent edge, which is the part the squash threw away.
+          if ! git merge-base --is-ancestor "$CUR_TAG" HEAD; then
+            echo "::warning::${CUR_TAG} is not in main's history — a previous sync PR was" \
+                 "squash-merged. Recording the ancestry so this merge stays clean."
+            git merge -s ours --no-edit -m \
+              "chore(reflect): record ${CUR_TAG} ancestry (lost to a squash merge)" "$CUR_TAG"
+          fi
+
+          # New paths only (.reflect/, .github/workflows/reflect-*.yml, scripts/reflect-*)
+          # and wrangler.jsonc is never edited in git, so this merge cannot
+          # conflict. If it ever does, stop — do not auto-resolve someone
+          # else's release.
           if ! git merge --no-edit "$NEW_TAG"; then
             echo "::error::merge conflict against ${NEW_TAG} — resolve by hand, then rerun"
             git merge --abort || true
@@ -165,6 +184,19 @@ jobs:
           git push --force-with-lease origin "$branch"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
+      # Decides whether this release may ship without a human. Runs after the
+      # merge so the classifier sees the branch exactly as it will be deployed.
+      - name: Classify the release for unattended shipping
+        if: steps.rel.outputs.up_to_date == 'false'
+        id: risk
+        env:
+          CUR_TAG: ${{ steps.rel.outputs.current }}
+          NEW_TAG: ${{ steps.rel.outputs.latest }}
+        run: |
+          set -euo pipefail
+          node scripts/reflect-classify-migrations.mjs --self-test
+          node scripts/reflect-classify-migrations.mjs --base "$CUR_TAG" --head "$NEW_TAG"
+
       - name: Open or update the PR
         if: steps.rel.outputs.up_to_date == 'false'
         env:
@@ -173,6 +205,8 @@ jobs:
           NEW_TAG: ${{ steps.rel.outputs.latest }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           HAS_DESTRUCTIVE: ${{ steps.migrations.outputs.has_destructive }}
+          RISK: ${{ steps.risk.outputs.class }}
+          AUTO_SHIP_ENABLED: ${{ vars.REFLECT_AUTO_SHIP }}
         run: |
           set -euo pipefail
 
@@ -198,8 +232,30 @@ jobs:
           fi
 
           {
-            printf '\n---\nOpened by `reflect-upstream-watch`. Merging triggers `reflect-deploy`,\n'
-            printf 'which pauses for environment approval before touching production.\n'
+            printf '\n### Migration risk: `%s`\n\n' "$RISK"
+            case "$RISK" in
+              none|additive)
+                printf 'Nothing in this release rewrites existing data, so `wrangler rollback`\n'
+                printf 'is a complete undo.\n\n'
+                if [ "${AUTO_SHIP_ENABLED:-}" = "true" ]; then
+                  printf '`reflect-auto-ship` merges this once CI is green and the deploy runs\n'
+                  printf 'unattended. Remove the `auto-ship` label to take it back under review.\n'
+                else
+                  printf 'Unattended shipping is switched off (`REFLECT_AUTO_SHIP` is not `true`),\n'
+                  printf 'so this still waits for a merge and for environment approval.\n'
+                fi
+                ;;
+              *)
+                printf 'This release runs migrations against existing tables, which cannot be\n'
+                printf 'un-run — rolling the Worker back would leave the schema ahead of the\n'
+                printf 'code. Merging is a human decision and the deploy waits for environment\n'
+                printf 'approval.\n'
+                ;;
+            esac
+          } >> /tmp/pr-body.md
+
+          {
+            printf '\n---\nOpened by `reflect-upstream-watch`. Merging triggers `reflect-deploy`.\n'
           } >> /tmp/pr-body.md
 
           if gh pr view "$BRANCH" >/dev/null 2>&1; then
@@ -213,3 +269,19 @@ jobs:
             gh pr edit "$BRANCH" --add-label "destructive-migration" \
               || echo "::warning::could not add label 'destructive-migration' — create it on the repo"
           fi
+
+          # The label is what reflect-auto-ship acts on, so it is only ever
+          # added for a release the classifier cleared. Removing it by hand is
+          # the way to stop a release from shipping unattended. Not applied at
+          # all while the feature is switched off, so the label never implies
+          # something that will not happen.
+          case "$RISK" in
+            none|additive)
+              if [ "${AUTO_SHIP_ENABLED:-}" = "true" ]; then
+                gh pr edit "$BRANCH" --add-label "auto-ship" \
+                  || echo "::warning::could not add label 'auto-ship' — create it on the repo"
+              else
+                echo "Classified ${RISK}, but REFLECT_AUTO_SHIP is not 'true' — leaving this for review."
+              fi
+              ;;
+          esac
