@@ -1,12 +1,25 @@
 name: Reflect — upstream watch
 
-# Nightly: if upstream has published a release newer than .reflect/upstream.lock,
+# Weekly: if upstream has published a release newer than .reflect/upstream.lock,
 # merge that tag to a branch and open a PR bumping the lock. Merging the PR is
 # the decision to ship; reflect-deploy.yml then asks for one more approval.
 #
-# We track TAGS, never upstream main. Upstream ships two or three releases a
-# week and every tag carries a release-notes/vX.Y.Z.md file, so the review diff
-# contains its own changelog.
+# We track TAGS, never upstream main. Upstream shipped 18 releases in the 75 days
+# to 2026-08-19 — about 1.7 a week, not the "two or three" this comment used to
+# claim — and every tag carries a release-notes/vX.Y.Z.md file, so the review
+# diff contains its own changelog.
+#
+# WHY WEEKLY, not nightly. Only the newest release is ever fetched, and the lock
+# moves only when a PR merges. Run nightly while reviewing weekly and each new
+# release opens its own branch and PR, so the earlier ones sit there superseded
+# and have to be closed by hand. Running weekly collapses whatever landed that
+# week into one PR aimed at the newest tag, which is the same thing you would
+# have ended up merging.
+#
+# The trade is a coarser bisect: if a batch of three releases breaks something,
+# the deploy no longer tells you which one did it. Accepted deliberately —
+# this is an internal tool behind Access, so being a few days behind upstream
+# costs nothing, while an unreviewed deploy costs an evening.
 #
 # Checkout and push prefer REFLECT_SYNC_TOKEN, a fine-grained PAT, over the
 # default GITHUB_TOKEN. Events raised by GITHUB_TOKEN do not start new workflow
@@ -22,8 +35,11 @@ name: Reflect — upstream watch
 
 on:
   schedule:
-    # 04:00 America/Vancouver year-round (11:00 UTC in PST, 12:00 in PDT).
-    - cron: "0 11 * * *"
+    # Monday 11:00 UTC — 04:00 PDT in summer, 03:00 PST in winter. GitHub cron
+    # has no timezone, so the hour drifts by one with DST rather than the day.
+    # reflect-sync-nudge posts at 16:00 UTC the same morning, so the PR is
+    # already open and its checks have run by the time it lands in Chat.
+    - cron: "0 11 * * 1"
   workflow_dispatch:
 
 # Needed for the GITHUB_TOKEN fallback path: without a PAT the job pushes the
